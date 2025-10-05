@@ -38,8 +38,18 @@
     </script>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+        // Wait for Recharts to load
+        const waitForRecharts = () => {
+            if (typeof Recharts !== 'undefined') {
+                initApp();
+            } else {
+                setTimeout(waitForRecharts, 100);
+            }
+        };
+
+        function initApp() {
+            const { useState, useMemo, useEffect } = React;
+            const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
 
         function EtoroTracker() {
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -1087,6 +1097,10 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<EtoroTracker />);
+        }
+
+        // Start app when Recharts is loaded
+        waitForRecharts();
     </script>
 </body>
 </html>
