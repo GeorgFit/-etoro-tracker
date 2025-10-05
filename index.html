@@ -5,27 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eToro Copy Trader Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body>
-    <div id="root">
-        <div style="min-height: 100vh; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; padding: 48px; display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
-                <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 8px;">Loading Firebase...</h1>
-                <p style="color: #94a3b8;">Please wait while the application initializes</p>
-            </div>
-        </div>
-    </div>
+<body class="bg-gray-900">
+    <div id="root"></div>
 
-    <!-- Firebase SDK v10 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBVE6eRSapt2fwVnLoQm2EfcScksg0OWiU",
             authDomain: "etoro-tracker.firebaseapp.com",
@@ -35,174 +24,431 @@
             appId: "1:941552714377:web:8c44519dc1352aea7bbc58"
         };
 
-        // Security Key - VÁLTOZTASD MEG!
         const SECURITY_KEY = "my-secret-etoro-key-2024";
-
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        console.log('✅ Firebase initialized!');
+        let transactions = [];
+        let snapshots = [];
+        let activeTab = 'dashboard';
+        let accountFilter = 'All';
+        let selectedTraders = [];
 
-        // Initial data
-        const INITIAL_TRANSACTIONS = [
-            { date: '2025.09.26', trader: 'Airwalk86', account: 'Virtual', amount: 66097, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'ValueHound', account: 'Virtual', amount: 66095, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'yelosegu', account: 'Virtual', amount: 66358, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'Pietro551', account: 'Virtual', amount: 66355, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'Lordfoofoo', account: 'Virtual', amount: 66347, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'ShyanHua', account: 'Virtual', amount: 66408, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'nasgokhan', account: 'Virtual', amount: 66467, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'Luma_25000', account: 'Virtual', amount: 66581, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'CryptoPortfolio', account: 'Virtual', amount: 166453, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'Napoleon-X', account: 'Virtual', amount: 166453, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'atzebijker', account: 'Virtual', amount: 66496, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'bitail', account: 'Virtual', amount: 66245, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'KatyHong', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'shakoorchudhary', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.25', trader: 'davoyu', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'IuliaPotinga', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
-            { date: '2025.09.26', trader: 'crwcf4zskk', account: 'Virtual', amount: 66503, type: 'DEPOSIT', note: '' },
-        ];
+        // Listen to Firebase
+        onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc')), (snap) => {
+            transactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            render();
+        });
 
-        const INITIAL_SNAPSHOTS = [
-            { date: '2025.10.04', trader: 'Airwalk86', account: 'Virtual', equity: 71712 },
-            { date: '2025.10.03', trader: 'davoyu', account: 'Virtual', equity: 71046 },
-            { date: '2025.10.03', trader: 'IuliaPotinga', account: 'Virtual', equity: 71109 },
-            { date: '2025.10.03', trader: 'ValueHound', account: 'Virtual', equity: 71795 },
-            { date: '2025.10.03', trader: 'bitail', account: 'Virtual', equity: 72218 },
-            { date: '2025.10.03', trader: 'nasgokhan', account: 'Virtual', equity: 72400 },
-            { date: '2025.10.03', trader: 'CryptoPortfolio', account: 'Virtual', equity: 180197 },
-            { date: '2025.10.03', trader: 'Pietro551', account: 'Virtual', equity: 72752 },
-            { date: '2025.10.03', trader: 'Napoleon-X', account: 'Virtual', equity: 180689 },
-            { date: '2025.10.03', trader: 'Luma_25000', account: 'Virtual', equity: 74144 },
-            { date: '2025.10.03', trader: 'shakoorchudhary', account: 'Virtual', equity: 75157 },
-            { date: '2025.10.03', trader: 'crwcf4zskk', account: 'Virtual', equity: 74413 },
-            { date: '2025.10.03', trader: 'yelosegu', account: 'Virtual', equity: 75241 },
-            { date: '2025.10.03', trader: 'KatyHong', account: 'Virtual', equity: 75184 },
-            { date: '2025.10.03', trader: 'atzebijker', account: 'Virtual', equity: 75444 },
-            { date: '2025.10.02', trader: 'yelosegu', account: 'Virtual', equity: 70692 },
-            { date: '2025.10.02', trader: 'Pietro551', account: 'Virtual', equity: 71007 },
-            { date: '2025.10.02', trader: 'Lordfoofoo', account: 'Virtual', equity: 70810 },
-            { date: '2025.10.02', trader: 'ShyanHua', account: 'Virtual', equity: 71054 },
-            { date: '2025.10.02', trader: 'nasgokhan', account: 'Virtual', equity: 71347 },
-            { date: '2025.10.02', trader: 'Luma_25000', account: 'Virtual', equity: 71423 },
-            { date: '2025.10.02', trader: 'CryptoPortfolio', account: 'Virtual', equity: 177558 },
-            { date: '2025.10.02', trader: 'Napoleon-X', account: 'Virtual', equity: 177127 },
-            { date: '2025.10.02', trader: 'atzebijker', account: 'Virtual', equity: 71292 },
-            { date: '2025.10.01', trader: 'Airwalk86', account: 'Virtual', equity: 71500 },
-            { date: '2025.10.01', trader: 'davoyu', account: 'Virtual', equity: 70800 },
-            { date: '2025.10.01', trader: 'IuliaPotinga', account: 'Virtual', equity: 70900 },
-            { date: '2025.10.01', trader: 'ValueHound', account: 'Virtual', equity: 71200 },
-            { date: '2025.10.01', trader: 'bitail', account: 'Virtual', equity: 71800 },
-            { date: '2025.10.01', trader: 'shakoorchudhary', account: 'Virtual', equity: 74500 },
-            { date: '2025.10.01', trader: 'crwcf4zskk', account: 'Virtual', equity: 73900 },
-            { date: '2025.10.01', trader: 'KatyHong', account: 'Virtual', equity: 74800 },
-            { date: '2025.09.30', trader: 'Airwalk86', account: 'Virtual', equity: 70200 },
-            { date: '2025.09.30', trader: 'CryptoPortfolio', account: 'Virtual', equity: 175000 },
-            { date: '2025.09.30', trader: 'Napoleon-X', account: 'Virtual', equity: 174500 },
-            { date: '2025.09.30', trader: 'atzebijker', account: 'Virtual', equity: 70100 },
-        ];
+        onSnapshot(query(collection(db, 'snapshots'), orderBy('date', 'desc')), (snap) => {
+            snapshots = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            render();
+        });
 
-        // Simple UI
-        async function render() {
-            const transSnap = await getDocs(query(collection(db, 'transactions')));
-            const snapSnap = await getDocs(query(collection(db, 'snapshots')));
+        // Calculations
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            const parts = dateStr.split('.');
+            return new Date(parts[0], parts[1] - 1, parts[2]);
+        }
+
+        function daysBetween(d1, d2) {
+            const date1 = parseDate(d1);
+            const date2 = parseDate(d2);
+            if (!date1 || !date2) return 0;
+            return Math.floor((date1 - date2) / (1000 * 60 * 60 * 24));
+        }
+
+        function calculateSnapshots() {
+            const sorted = [...snapshots].sort((a, b) => `${b.trader}-${b.account}-${b.date}`.localeCompare(`${a.trader}-${a.account}-${a.date}`));
             
-            const transCount = transSnap.size;
-            const snapCount = snapSnap.size;
-            const needsUpload = transCount === 0 && snapCount === 0;
+            const byTraderAccount = {};
+            sorted.forEach(snap => {
+                const key = `${snap.trader}-${snap.account}`;
+                if (!byTraderAccount[key]) byTraderAccount[key] = [];
+                byTraderAccount[key].push(snap);
+            });
 
-            const html = `
-                <div style="min-height: 100vh; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; padding: 24px;">
-                    <div style="max-width: 1200px; margin: 0 auto;">
-                        <div style="margin-bottom: 32px;">
-                            <h1 style="font-size: 36px; font-weight: bold; background: linear-gradient(to right, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">
-                                eToro Copy Trader Dashboard
-                            </h1>
-                            <p style="color: #94a3b8;">Firebase Real-time Sync ✅</p>
+            Object.keys(byTraderAccount).forEach(key => {
+                const snaps = byTraderAccount[key].sort((a, b) => parseDate(a.date) - parseDate(b.date));
+                let runningMax = 0;
+                snaps.forEach(snap => {
+                    runningMax = Math.max(runningMax, snap.equity);
+                    snap.runningMaxEquity = runningMax;
+                    snap.currentDrawdown = runningMax > 0 ? ((runningMax - snap.equity) / runningMax) * 100 : 0;
+                });
+            });
+
+            return sorted.map((snap, idx) => {
+                const prev = sorted.filter((s, i) => i > idx && s.trader === snap.trader && s.account === snap.account)[0];
+                const prevDate = prev ? prev.date : '';
+                const prevEquity = prev ? prev.equity : 0;
+
+                let flow = 0;
+                if (prevDate) {
+                    flow = transactions.filter(t => 
+                        t.trader === snap.trader && t.account === snap.account &&
+                        parseDate(t.date) > parseDate(prevDate) && parseDate(t.date) <= parseDate(snap.date)
+                    ).reduce((sum, t) => sum + (t.type === 'DEPOSIT' ? t.amount : -t.amount), 0);
+                } else {
+                    flow = transactions.filter(t => 
+                        t.trader === snap.trader && t.account === snap.account && parseDate(t.date) <= parseDate(snap.date)
+                    ).reduce((sum, t) => sum + (t.type === 'DEPOSIT' ? t.amount : -t.amount), 0);
+                }
+
+                const pnl = snap.equity - prevEquity - flow;
+                const days = prevDate ? daysBetween(snap.date, prevDate) : 0;
+                const plPerDay = days > 0 ? pnl / days : 0;
+
+                return { ...snap, prevDate, flowSinceLast: flow, prevEquity, pnlPeriod: pnl, daysSincePrev: days, plPerDay };
+            });
+        }
+
+        function weightedAverage(snaps, maxDays = 14) {
+            if (!snaps.length) return 0;
+            const sorted = [...snaps].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+            const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000);
+            const recent = sorted.filter(s => parseDate(s.date) >= cutoff && s.plPerDay);
+            if (!recent.length) return 0;
+
+            let totalWeight = 0;
+            const weighted = recent.map((s, i) => {
+                const weight = Math.exp(-i / 5);
+                totalWeight += weight;
+                return { plPerDay: s.plPerDay, weight };
+            });
+
+            return weighted.reduce((sum, w) => sum + w.plPerDay * (w.weight / totalWeight), 0);
+        }
+
+        function calculateDashboard() {
+            const calc = calculateSnapshots();
+            const latest = {};
+            
+            calc.forEach(s => {
+                const key = `${s.trader}-${s.account}`;
+                if (!latest[key] || parseDate(s.date) > parseDate(latest[key].date)) {
+                    latest[key] = s;
+                }
+            });
+
+            return Object.values(latest).map(snap => {
+                const trans = transactions.filter(t => t.trader === snap.trader && t.account === snap.account);
+                const netInv = trans.reduce((sum, t) => sum + (t.type === 'DEPOSIT' ? t.amount : -t.amount), 0);
+                const pl = snap.equity - netInv;
+                const plPercent = netInv > 0 ? (pl / netInv) * 100 : 0;
+
+                const firstDate = trans.length ? trans.reduce((e, t) => parseDate(t.date) < parseDate(e.date) ? t : e).date : snap.date;
+                const daysStart = daysBetween(new Date().toISOString().split('T')[0].replace(/-/g, '.'), firstDate) + 1;
+
+                const traderSnaps = calc.filter(s => s.trader === snap.trader && s.account === snap.account)
+                    .sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+                const last3 = traderSnaps.slice(0, 3).filter(s => s.plPerDay);
+                const currentDaily3pt = last3.length >= 1 ? last3.reduce((sum, s) => sum + s.plPerDay, 0) / last3.length : null;
+                const currentDaily3ptDays = last3.length;
+
+                const estDaily = weightedAverage(traderSnaps, 14);
+                const dailyPLStart = daysStart > 0 ? pl / daysStart : 0;
+                const dailyPercentStart = daysStart > 0 ? plPercent / daysStart : 0;
+
+                const allDD = traderSnaps.map(s => s.currentDrawdown || 0).filter(d => d > 0);
+                const maxDD = allDD.length ? Math.max(...allDD) : 0;
+                const avgDD = allDD.length ? allDD.reduce((s, d) => s + d, 0) / allDD.length : 0;
+                const recovery = maxDD > 0 ? plPercent / maxDD : 0;
+
+                return {
+                    trader: snap.trader,
+                    account: snap.account,
+                    latestDate: snap.date,
+                    equity: snap.equity,
+                    netInvested: netInv,
+                    pl,
+                    plPercent,
+                    currentDailyPL3pt: currentDaily3pt,
+                    currentDailyPL3ptDays: currentDaily3ptDays,
+                    dailyPLSinceStart: dailyPLStart,
+                    estDailyPL: estDaily,
+                    dailyPlPercentSinceStart: dailyPercentStart,
+                    daysStart,
+                    currentDrawdown: snap.currentDrawdown || 0,
+                    maxDrawdown: maxDD,
+                    avgDrawdown: avgDD,
+                    recoveryFactor: recovery
+                };
+            }).filter(d => accountFilter === 'All' || d.account === accountFilter)
+              .sort((a, b) => a.trader.localeCompare(b.trader));
+        }
+
+        function getHeatmap(val, vals) {
+            const valid = vals.filter(v => !isNaN(v) && isFinite(v));
+            if (!valid.length) return '#475569';
+            const min = Math.min(...valid);
+            const max = Math.max(...valid);
+            if (min === max) return val >= 0 ? '#22c55e' : '#ef4444';
+            const norm = (val - min) / (max - min);
+            const colors = ['#7f1d1d', '#991b1b', '#b91c1c', '#dc2626', '#ef4444', '#22c55e', '#16a34a', '#15803d', '#166534', '#14532d'];
+            return colors[Math.floor(norm * (colors.length - 1))];
+        }
+
+        function getDDBorder(days) {
+            if (days === 3) return '#22c55e';
+            if (days === 2) return '#eab308';
+            return '#f97316';
+        }
+
+        function exportXLSX() {
+            const wb = XLSX.utils.book_new();
+            const dash = calculateDashboard();
+            const dashData = dash.map(d => ({
+                Trader: d.trader,
+                Account: d.account,
+                Latest_Date: d.latestDate,
+                Equity: d.equity,
+                Net_Invested: d.netInvested,
+                'P/L': d.pl,
+                'P/L_%': d.plPercent,
+                'Current_DD_%': d.currentDrawdown,
+                'Max_DD_%': d.maxDrawdown,
+                'Avg_DD_%': d.avgDrawdown,
+                Recovery_Factor: d.recoveryFactor,
+                Recent_Daily_PL: d.currentDailyPL3pt,
+                Days_in_avg: d.currentDailyPL3ptDays,
+                daily_PL_since_start: d.dailyPLSinceStart,
+                Smart_Prediction_14d: d.estDailyPL,
+                'Daily_PL%_Since_Start': d.dailyPlPercentSinceStart
+            }));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dashData), 'Trader_View');
+            XLSX.writeFile(wb, `etoro_dashboard_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        async function addData(type, data) {
+            await addDoc(collection(db, type === 'snapshot' ? 'snapshots' : 'transactions'), {
+                ...data,
+                securityKey: SECURITY_KEY,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        function render() {
+            const dash = calculateDashboard();
+            const totals = {
+                pl: dash.reduce((s, d) => s + d.pl, 0),
+                dailyPL: dash.reduce((s, d) => s + d.dailyPLSinceStart, 0),
+                estDaily: dash.reduce((s, d) => s + d.estDailyPL, 0)
+            };
+
+            const plVals = dash.map(d => d.pl);
+            const plPctVals = dash.map(d => d.plPercent);
+            const ddVals = dash.map(d => d.currentDrawdown);
+
+            const traderNames = [...new Set(transactions.map(t => t.trader))].sort();
+
+            document.getElementById('root').innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6">
+                    <div class="max-w-7xl mx-auto">
+                        <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                            eToro Copy Trader Dashboard
+                        </h1>
+                        <p class="text-slate-400 mb-6">Firebase Real-time Sync Active</p>
+
+                        <div class="flex gap-2 mb-6 flex-wrap">
+                            <button onclick="setTab('dashboard')" class="px-6 py-3 rounded-lg font-semibold ${activeTab === 'dashboard' ? 'bg-blue-600' : 'bg-slate-800'} hover:bg-blue-700">Dashboard</button>
+                            <button onclick="setTab('transactions')" class="px-6 py-3 rounded-lg font-semibold ${activeTab === 'transactions' ? 'bg-blue-600' : 'bg-slate-800'} hover:bg-blue-700">Transactions</button>
+                            <button onclick="setTab('snapshots')" class="px-6 py-3 rounded-lg font-semibold ${activeTab === 'snapshots' ? 'bg-blue-600' : 'bg-slate-800'} hover:bg-blue-700">Snapshots</button>
                         </div>
 
-                        ${needsUpload ? `
-                        <div style="background: #1e40af20; border: 1px solid #3b82f6; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-                            <h3 style="font-size: 20px; font-weight: 600; color: #60a5fa; margin-bottom: 12px;">
-                                First Time Setup
-                            </h3>
-                            <p style="color: #cbd5e1; margin-bottom: 16px;">
-                                Database is empty. Upload initial data (${INITIAL_TRANSACTIONS.length} transactions + ${INITIAL_SNAPSHOTS.length} snapshots)?
-                            </p>
-                            <button id="uploadBtn" style="background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; border: none; cursor: pointer;">
-                                Upload Initial Data
-                            </button>
-                        </div>
-                        ` : ''}
+                        ${activeTab === 'dashboard' ? `
+                            <div class="space-y-6">
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                        <div class="text-slate-400 text-xs mb-1">Total P/L</div>
+                                        <div class="text-2xl font-bold ${totals.pl >= 0 ? 'text-green-400' : 'text-red-400'}">${totals.pl.toFixed(0)} Ft</div>
+                                    </div>
+                                    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                        <div class="text-slate-400 text-xs mb-1">Daily P/L Since Start</div>
+                                        <div class="text-2xl font-bold ${totals.dailyPL >= 0 ? 'text-green-400' : 'text-red-400'}">${totals.dailyPL.toFixed(0)} Ft</div>
+                                    </div>
+                                    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                        <div class="text-slate-400 text-xs mb-1">Avg Max DD</div>
+                                        <div class="text-2xl font-bold text-orange-400">${dash.length ? (dash.reduce((s, d) => s + d.maxDrawdown, 0) / dash.length).toFixed(2) : 0}%</div>
+                                    </div>
+                                    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                        <div class="text-slate-400 text-xs mb-1">Active Traders</div>
+                                        <div class="text-2xl font-bold text-blue-400">${dash.length}</div>
+                                    </div>
+                                </div>
 
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px;">
-                                <div style="color: #94a3b8; font-size: 14px; margin-bottom: 4px;">Transactions</div>
-                                <div style="font-size: 32px; font-weight: bold; color: #60a5fa;">${transCount}</div>
+                                <div class="flex gap-4 items-center bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                    <span class="text-slate-300">Account:</span>
+                                    <select onchange="setFilter(this.value)" class="bg-slate-700 rounded px-4 py-2">
+                                        <option ${accountFilter === 'All' ? 'selected' : ''}>All</option>
+                                        <option ${accountFilter === 'Virtual' ? 'selected' : ''}>Virtual</option>
+                                        <option ${accountFilter === 'Real' ? 'selected' : ''}>Real</option>
+                                    </select>
+                                    <button onclick="exportXLSX()" class="ml-auto bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-semibold">Export XLSX</button>
+                                </div>
+
+                                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead><tr class="border-b border-slate-700">
+                                            <th class="text-left py-3 px-2">Trader</th>
+                                            <th class="text-left py-3 px-2">Account</th>
+                                            <th class="text-right py-3 px-2">Equity</th>
+                                            <th class="text-right py-3 px-2">Net Invested</th>
+                                            <th class="text-right py-3 px-2">P/L</th>
+                                            <th class="text-right py-3 px-2">P/L %</th>
+                                            <th class="text-right py-3 px-2">Current DD %</th>
+                                            <th class="text-right py-3 px-2">Max DD %</th>
+                                            <th class="text-right py-3 px-2">Recovery</th>
+                                            <th class="text-right py-3 px-2">Recent Daily PL</th>
+                                            <th class="text-right py-3 px-2">Smart Predict</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            ${dash.map(d => `
+                                                <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                                    <td class="py-3 px-2 font-semibold">${d.trader}</td>
+                                                    <td class="py-3 px-2 text-slate-400">${d.account}</td>
+                                                    <td class="text-right py-3 px-2">${d.equity.toFixed(0)}Ft</td>
+                                                    <td class="text-right py-3 px-2">${d.netInvested.toFixed(0)}Ft</td>
+                                                    <td class="text-right py-3 px-2 font-semibold" style="background:${getHeatmap(d.pl, plVals)}">${d.pl.toFixed(0)}Ft</td>
+                                                    <td class="text-right py-3 px-2 font-semibold" style="background:${getHeatmap(d.plPercent, plPctVals)}">${d.plPercent.toFixed(2)}%</td>
+                                                    <td class="text-right py-3 px-2 font-semibold text-orange-400">${d.currentDrawdown.toFixed(2)}%</td>
+                                                    <td class="text-right py-3 px-2 font-semibold text-red-400">${d.maxDrawdown.toFixed(2)}%</td>
+                                                    <td class="text-right py-3 px-2">${d.recoveryFactor.toFixed(2)}x</td>
+                                                    <td class="text-right py-3 px-2 border-l-4" style="background:${d.currentDailyPL3pt ? getHeatmap(d.currentDailyPL3pt, dash.map(x => x.currentDailyPL3pt || 0)) : '#475569'}; border-left-color:${d.currentDailyPL3pt ? getDDBorder(d.currentDailyPL3ptDays) : '#475569'}">
+                                                        ${d.currentDailyPL3pt ? d.currentDailyPL3pt.toFixed(0) + 'Ft (' + d.currentDailyPL3ptDays + ')' : ''}
+                                                    </td>
+                                                    <td class="text-right py-3 px-2" style="background:${getHeatmap(d.estDailyPL, dash.map(x => x.estDailyPL))}">${d.estDailyPL.toFixed(0)}Ft</td>
+                                                </tr>
+                                            `).join('')}
+                                            <tr class="bg-slate-700 font-bold">
+                                                <td colspan="4" class="py-3 px-2">Σ totals</td>
+                                                <td class="text-right py-3 px-2 ${totals.pl >= 0 ? 'bg-green-600' : 'bg-red-600'}">${totals.pl.toFixed(0)}Ft</td>
+                                                <td colspan="5"></td>
+                                                <td class="text-right py-3 px-2 ${totals.estDaily >= 0 ? 'bg-green-600' : 'bg-red-600'}">${totals.estDaily.toFixed(0)}Ft</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px;">
-                                <div style="color: #94a3b8; font-size: 14px; margin-bottom: 4px;">Snapshots</div>
-                                <div style="font-size: 32px; font-weight: bold; color: #22d3ee;">${snapCount}</div>
+                        ` : activeTab === 'transactions' ? `
+                            <div class="space-y-6">
+                                <button onclick="showAddModal('transaction')" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold">Add Transaction</button>
+                                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-x-auto">
+                                    <table class="w-full"><thead><tr class="border-b border-slate-700">
+                                        <th class="text-left py-3 px-2">Date</th>
+                                        <th class="text-left py-3 px-2">Trader</th>
+                                        <th class="text-left py-3 px-2">Account</th>
+                                        <th class="text-right py-3 px-2">Amount</th>
+                                        <th class="text-left py-3 px-2">Type</th>
+                                    </tr></thead><tbody>
+                                        ${transactions.map(t => `
+                                            <tr class="border-b border-slate-700/50">
+                                                <td class="py-3 px-2">${t.date}</td>
+                                                <td class="py-3 px-2 font-semibold">${t.trader}</td>
+                                                <td class="py-3 px-2 text-slate-400">${t.account}</td>
+                                                <td class="text-right py-3 px-2">${t.amount}Ft</td>
+                                                <td class="py-3 px-2"><span class="px-2 py-1 rounded text-xs ${t.type === 'DEPOSIT' ? 'bg-green-600' : 'bg-red-600'}">${t.type}</span></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody></table>
+                                </div>
                             </div>
-                        </div>
+                        ` : `
+                            <div class="space-y-6">
+                                <button onclick="showAddModal('snapshot')" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold">Add Snapshot</button>
+                                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-x-auto">
+                                    <table class="w-full text-sm"><thead><tr class="border-b border-slate-700">
+                                        <th class="text-left py-3 px-2">Date</th>
+                                        <th class="text-left py-3 px-2">Trader</th>
+                                        <th class="text-left py-3 px-2">Account</th>
+                                        <th class="text-right py-3 px-2">Equity</th>
+                                        <th class="text-right py-3 px-2">Drawdown %</th>
+                                    </tr></thead><tbody>
+                                        ${calculateSnapshots().map(s => `
+                                            <tr class="border-b border-slate-700/50">
+                                                <td class="py-3 px-2">${s.date}</td>
+                                                <td class="py-3 px-2 font-semibold">${s.trader}</td>
+                                                <td class="py-3 px-2 text-slate-400">${s.account}</td>
+                                                <td class="text-right py-3 px-2">${s.equity}Ft</td>
+                                                <td class="text-right py-3 px-2 ${s.currentDrawdown > 0 ? 'text-red-400' : 'text-green-400'}">${s.currentDrawdown.toFixed(2)}%</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody></table>
+                                </div>
+                            </div>
+                        `}
 
-                        <div style="background: #78350f20; border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; margin-top: 24px;">
-                            <h3 style="font-size: 18px; font-weight: 600; color: #fbbf24; margin-bottom: 12px;">
-                                Security Rules Setup
-                            </h3>
-                            <p style="color: #fcd34d; font-size: 14px; margin-bottom: 12px;">
-                                Firebase Console → Firestore → Rules:
-                            </p>
-                            <pre style="background: #0f172a; padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px;">rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read: if true;
-      allow write: if request.resource.data.securityKey == "${SECURITY_KEY}";
-    }
-  }
-}</pre>
+                        <div id="modal"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.setTab = (tab) => { activeTab = tab; render(); };
+        window.setFilter = (f) => { accountFilter = f; render(); };
+        window.exportXLSX = exportXLSX;
+        window.showAddModal = (type) => {
+            const traders = [...new Set(transactions.map(t => t.trader))].sort();
+            document.getElementById('modal').innerHTML = `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick="closeModal(event)">
+                    <div class="bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4 border border-slate-700" onclick="event.stopPropagation()">
+                        <h3 class="text-xl font-semibold mb-4">Add ${type === 'snapshot' ? 'Snapshot' : 'Transaction'}</h3>
+                        <div class="space-y-4">
+                            <input id="date" type="text" placeholder="Date (YYYY.MM.DD)" value="${new Date().toISOString().split('T')[0].replace(/-/g, '.')}" class="w-full bg-slate-700 rounded px-4 py-2">
+                            ${type === 'snapshot' ? `
+                                <select id="trader" class="w-full bg-slate-700 rounded px-4 py-2">
+                                    <option value="">Select Trader</option>
+                                    ${traders.map(t => `<option value="${t}">${t}</option>`).join('')}
+                                </select>
+                            ` : `
+                                <input id="trader" type="text" placeholder="Trader Name" class="w-full bg-slate-700 rounded px-4 py-2">
+                            `}
+                            <select id="account" class="w-full bg-slate-700 rounded px-4 py-2">
+                                <option>Virtual</option>
+                                <option>Real</option>
+                            </select>
+                            ${type === 'snapshot' ? `
+                                <input id="equity" type="number" placeholder="Equity" class="w-full bg-slate-700 rounded px-4 py-2">
+                            ` : `
+                                <input id="amount" type="number" placeholder="Amount" class="w-full bg-slate-700 rounded px-4 py-2">
+                                <select id="type" class="w-full bg-slate-700 rounded px-4 py-2">
+                                    <option>DEPOSIT</option>
+                                    <option>WITHDRAWAL</option>
+                                    <option>REALLOCATION</option>
+                                </select>
+                                <input id="note" type="text" placeholder="Note (optional)" class="w-full bg-slate-700 rounded px-4 py-2">
+                            `}
+                            <button onclick="submitData('${type}')" class="w-full bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold">Add</button>
                         </div>
                     </div>
                 </div>
             `;
+        };
 
-            document.getElementById('root').innerHTML = html;
+        window.closeModal = (e) => {
+            if (e.target === e.currentTarget) document.getElementById('modal').innerHTML = '';
+        };
 
-            if (needsUpload) {
-                document.getElementById('uploadBtn').onclick = async () => {
-                    document.getElementById('uploadBtn').textContent = 'Uploading...';
-                    document.getElementById('uploadBtn').disabled = true;
-                    
-                    for (const trans of INITIAL_TRANSACTIONS) {
-                        await addDoc(collection(db, 'transactions'), {
-                            ...trans,
-                            securityKey: SECURITY_KEY,
-                            timestamp: new Date().toISOString()
-                        });
-                    }
-                    
-                    for (const snap of INITIAL_SNAPSHOTS) {
-                        await addDoc(collection(db, 'snapshots'), {
-                            ...snap,
-                            securityKey: SECURITY_KEY,
-                            timestamp: new Date().toISOString()
-                        });
-                    }
-                    
-                    alert('Upload complete!');
-                    render();
-                };
+        window.submitData = async (type) => {
+            const data = {
+                date: document.getElementById('date').value,
+                trader: document.getElementById('trader').value,
+                account: document.getElementById('account').value
+            };
+            if (type === 'snapshot') {
+                data.equity = parseFloat(document.getElementById('equity').value);
+            } else {
+                data.amount = parseFloat(document.getElementById('amount').value);
+                data.type = document.getElementById('type').value;
+                data.note = document.getElementById('note')?.value || '';
             }
-        }
+            await addData(type, data);
+            document.getElementById('modal').innerHTML = '';
+        };
 
         render();
-
-        // Real-time updates
-        onSnapshot(query(collection(db, 'transactions')), () => render());
-        onSnapshot(query(collection(db, 'snapshots')), () => render());
     </script>
 </body>
 </html>
