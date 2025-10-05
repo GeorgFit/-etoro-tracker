@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eToro Copy Trader Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div style="min-height: 100vh; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; padding: 48px; display: flex; align-items: center; justify-content: center;">
+            <div style="text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 8px;">Loading Firebase...</h1>
+                <p style="color: #94a3b8;">Please wait while the application initializes</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK v10 -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBVE6eRSapt2fwVnLoQm2EfcScksg0OWiU",
+            authDomain: "etoro-tracker.firebaseapp.com",
+            projectId: "etoro-tracker",
+            storageBucket: "etoro-tracker.firebasestorage.app",
+            messagingSenderId: "941552714377",
+            appId: "1:941552714377:web:8c44519dc1352aea7bbc58"
+        };
+
+        // Security Key - VÁLTOZTASD MEG!
+        const SECURITY_KEY = "my-secret-etoro-key-2024";
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        console.log('✅ Firebase initialized!');
+
+        // Initial data
+        const INITIAL_TRANSACTIONS = [
+            { date: '2025.09.26', trader: 'Airwalk86', account: 'Virtual', amount: 66097, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'ValueHound', account: 'Virtual', amount: 66095, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'yelosegu', account: 'Virtual', amount: 66358, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'Pietro551', account: 'Virtual', amount: 66355, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'Lordfoofoo', account: 'Virtual', amount: 66347, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'ShyanHua', account: 'Virtual', amount: 66408, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'nasgokhan', account: 'Virtual', amount: 66467, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'Luma_25000', account: 'Virtual', amount: 66581, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'CryptoPortfolio', account: 'Virtual', amount: 166453, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'Napoleon-X', account: 'Virtual', amount: 166453, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'atzebijker', account: 'Virtual', amount: 66496, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'bitail', account: 'Virtual', amount: 66245, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'KatyHong', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'shakoorchudhary', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.25', trader: 'davoyu', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'IuliaPotinga', account: 'Virtual', amount: 66304, type: 'DEPOSIT', note: '' },
+            { date: '2025.09.26', trader: 'crwcf4zskk', account: 'Virtual', amount: 66503, type: 'DEPOSIT', note: '' },
+        ];
+
+        const INITIAL_SNAPSHOTS = [
+            { date: '2025.10.04', trader: 'Airwalk86', account: 'Virtual', equity: 71712 },
+            { date: '2025.10.03', trader: 'davoyu', account: 'Virtual', equity: 71046 },
+            { date: '2025.10.03', trader: 'IuliaPotinga', account: 'Virtual', equity: 71109 },
+            { date: '2025.10.03', trader: 'ValueHound', account: 'Virtual', equity: 71795 },
+            { date: '2025.10.03', trader: 'bitail', account: 'Virtual', equity: 72218 },
+            { date: '2025.10.03', trader: 'nasgokhan', account: 'Virtual', equity: 72400 },
+            { date: '2025.10.03', trader: 'CryptoPortfolio', account: 'Virtual', equity: 180197 },
+            { date: '2025.10.03', trader: 'Pietro551', account: 'Virtual', equity: 72752 },
+            { date: '2025.10.03', trader: 'Napoleon-X', account: 'Virtual', equity: 180689 },
+            { date: '2025.10.03', trader: 'Luma_25000', account: 'Virtual', equity: 74144 },
+            { date: '2025.10.03', trader: 'shakoorchudhary', account: 'Virtual', equity: 75157 },
+            { date: '2025.10.03', trader: 'crwcf4zskk', account: 'Virtual', equity: 74413 },
+            { date: '2025.10.03', trader: 'yelosegu', account: 'Virtual', equity: 75241 },
+            { date: '2025.10.03', trader: 'KatyHong', account: 'Virtual', equity: 75184 },
+            { date: '2025.10.03', trader: 'atzebijker', account: 'Virtual', equity: 75444 },
+            { date: '2025.10.02', trader: 'yelosegu', account: 'Virtual', equity: 70692 },
+            { date: '2025.10.02', trader: 'Pietro551', account: 'Virtual', equity: 71007 },
+            { date: '2025.10.02', trader: 'Lordfoofoo', account: 'Virtual', equity: 70810 },
+            { date: '2025.10.02', trader: 'ShyanHua', account: 'Virtual', equity: 71054 },
+            { date: '2025.10.02', trader: 'nasgokhan', account: 'Virtual', equity: 71347 },
+            { date: '2025.10.02', trader: 'Luma_25000', account: 'Virtual', equity: 71423 },
+            { date: '2025.10.02', trader: 'CryptoPortfolio', account: 'Virtual', equity: 177558 },
+            { date: '2025.10.02', trader: 'Napoleon-X', account: 'Virtual', equity: 177127 },
+            { date: '2025.10.02', trader: 'atzebijker', account: 'Virtual', equity: 71292 },
+            { date: '2025.10.01', trader: 'Airwalk86', account: 'Virtual', equity: 71500 },
+            { date: '2025.10.01', trader: 'davoyu', account: 'Virtual', equity: 70800 },
+            { date: '2025.10.01', trader: 'IuliaPotinga', account: 'Virtual', equity: 70900 },
+            { date: '2025.10.01', trader: 'ValueHound', account: 'Virtual', equity: 71200 },
+            { date: '2025.10.01', trader: 'bitail', account: 'Virtual', equity: 71800 },
+            { date: '2025.10.01', trader: 'shakoorchudhary', account: 'Virtual', equity: 74500 },
+            { date: '2025.10.01', trader: 'crwcf4zskk', account: 'Virtual', equity: 73900 },
+            { date: '2025.10.01', trader: 'KatyHong', account: 'Virtual', equity: 74800 },
+            { date: '2025.09.30', trader: 'Airwalk86', account: 'Virtual', equity: 70200 },
+            { date: '2025.09.30', trader: 'CryptoPortfolio', account: 'Virtual', equity: 175000 },
+            { date: '2025.09.30', trader: 'Napoleon-X', account: 'Virtual', equity: 174500 },
+            { date: '2025.09.30', trader: 'atzebijker', account: 'Virtual', equity: 70100 },
+        ];
+
+        // Simple UI
+        async function render() {
+            const transSnap = await getDocs(query(collection(db, 'transactions')));
+            const snapSnap = await getDocs(query(collection(db, 'snapshots')));
+            
+            const transCount = transSnap.size;
+            const snapCount = snapSnap.size;
+            const needsUpload = transCount === 0 && snapCount === 0;
+
+            const html = `
+                <div style="min-height: 100vh; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; padding: 24px;">
+                    <div style="max-width: 1200px; margin: 0 auto;">
+                        <div style="margin-bottom: 32px;">
+                            <h1 style="font-size: 36px; font-weight: bold; background: linear-gradient(to right, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">
+                                eToro Copy Trader Dashboard
+                            </h1>
+                            <p style="color: #94a3b8;">Firebase Real-time Sync ✅</p>
+                        </div>
+
+                        ${needsUpload ? `
+                        <div style="background: #1e40af20; border: 1px solid #3b82f6; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                            <h3 style="font-size: 20px; font-weight: 600; color: #60a5fa; margin-bottom: 12px;">
+                                First Time Setup
+                            </h3>
+                            <p style="color: #cbd5e1; margin-bottom: 16px;">
+                                Database is empty. Upload initial data (${INITIAL_TRANSACTIONS.length} transactions + ${INITIAL_SNAPSHOTS.length} snapshots)?
+                            </p>
+                            <button id="uploadBtn" style="background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; border: none; cursor: pointer;">
+                                Upload Initial Data
+                            </button>
+                        </div>
+                        ` : ''}
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px;">
+                                <div style="color: #94a3b8; font-size: 14px; margin-bottom: 4px;">Transactions</div>
+                                <div style="font-size: 32px; font-weight: bold; color: #60a5fa;">${transCount}</div>
+                            </div>
+                            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px;">
+                                <div style="color: #94a3b8; font-size: 14px; margin-bottom: 4px;">Snapshots</div>
+                                <div style="font-size: 32px; font-weight: bold; color: #22d3ee;">${snapCount}</div>
+                            </div>
+                        </div>
+
+                        <div style="background: #78350f20; border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; margin-top: 24px;">
+                            <h3 style="font-size: 18px; font-weight: 600; color: #fbbf24; margin-bottom: 12px;">
+                                Security Rules Setup
+                            </h3>
+                            <p style="color: #fcd34d; font-size: 14px; margin-bottom: 12px;">
+                                Firebase Console → Firestore → Rules:
+                            </p>
+                            <pre style="background: #0f172a; padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read: if true;
+      allow write: if request.resource.data.securityKey == "${SECURITY_KEY}";
+    }
+  }
+}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('root').innerHTML = html;
+
+            if (needsUpload) {
+                document.getElementById('uploadBtn').onclick = async () => {
+                    document.getElementById('uploadBtn').textContent = 'Uploading...';
+                    document.getElementById('uploadBtn').disabled = true;
+                    
+                    for (const trans of INITIAL_TRANSACTIONS) {
+                        await addDoc(collection(db, 'transactions'), {
+                            ...trans,
+                            securityKey: SECURITY_KEY,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                    for (const snap of INITIAL_SNAPSHOTS) {
+                        await addDoc(collection(db, 'snapshots'), {
+                            ...snap,
+                            securityKey: SECURITY_KEY,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                    alert('Upload complete!');
+                    render();
+                };
+            }
+        }
+
+        render();
+
+        // Real-time updates
+        onSnapshot(query(collection(db, 'transactions')), () => render());
+        onSnapshot(query(collection(db, 'snapshots')), () => render());
+    </script>
+</body>
+</html>
