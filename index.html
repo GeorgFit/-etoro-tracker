@@ -38,16 +38,8 @@
     </script>
 
     <script type="text/babel">
-        function initApp() {
-            const { useState, useMemo, useEffect } = React;
-            
-            // Check if Recharts is available, otherwise skip charts
-            const hasRecharts = typeof Recharts !== 'undefined';
-            let LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer;
-            
-            if (hasRecharts) {
-                ({ LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts);
-            }
+        const { useState, useMemo, useEffect } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
 
         function EtoroTracker() {
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -790,7 +782,7 @@
                                     </div>
                                 </div>
 
-                                {selectedTraders.length > 0 && timelineData.length > 0 && hasRecharts && (
+                                {selectedTraders.length > 0 && timelineData.length > 0 && (
                                     <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
                                         <h3 className="text-xl font-semibold mb-4">
                                             {chartType === 'equity' ? 'Equity Over Time' :
@@ -825,15 +817,6 @@
                                                 ))}
                                             </LineChart>
                                         </ResponsiveContainer>
-                                    </div>
-                                )}
-
-                                {selectedTraders.length > 0 && timelineData.length > 0 && !hasRecharts && (
-                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-                                        <div className="text-center py-12">
-                                            <p className="text-slate-400 text-lg mb-4">Chart library is loading...</p>
-                                            <p className="text-slate-500 text-sm">Please refresh the page if charts don't appear.</p>
-                                        </div>
                                     </div>
                                 )}
 
@@ -1104,12 +1087,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<EtoroTracker />);
-        }
-
-        // Wait for all libraries to load
-        window.addEventListener('load', () => {
-            setTimeout(initApp, 500);
-        });
     </script>
 </body>
 </html>
