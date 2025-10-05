@@ -8,7 +8,6 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -39,14 +38,11 @@
 
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
 
         function EtoroTracker() {
             const [activeTab, setActiveTab] = useState('dashboard');
             const [accountFilter, setAccountFilter] = useState('All');
             const [showAddData, setShowAddData] = useState(false);
-            const [selectedTraders, setSelectedTraders] = useState([]);
-            const [chartType, setChartType] = useState('equity');
             const [transactions, setTransactions] = useState([]);
             const [snapshots, setSnapshots] = useState([]);
             const [newData, setNewData] = useState({
@@ -98,15 +94,6 @@
                 const d2 = parseDate(date2Str);
                 if (!d1 || !d2) return 0;
                 return Math.floor((d1 - d2) / (1000 * 60 * 60 * 24));
-            };
-
-            const trimMean = (values, percent) => {
-                if (values.length === 0) return 0;
-                const sorted = [...values].sort((a, b) => a - b);
-                const trimCount = Math.floor(sorted.length * percent / 2);
-                if (trimCount === 0) return sorted.reduce((sum, val) => sum + val, 0) / sorted.length;
-                const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
-                return trimmed.length > 0 ? trimmed.reduce((sum, val) => sum + val, 0) / trimmed.length : 0;
             };
 
             const weightedAverage = (snapsWithDates, maxDays = 14) => {
@@ -312,9 +299,9 @@
                 const max = Math.max(...validValues);
                 if (min === max) return value <= 5 ? 'bg-green-500' : 'bg-red-500';
                 const range = max - min;
-                const normalized = (value - min) / range;
-                const colors = ['bg-green-900', 'bg-green-800', 'bg-green-700', 'bg-green-600', 'bg-green-500',
-                    'bg-red-500', 'bg-red-600', 'bg-red-700', 'bg-red-800', 'bg-red-900'];
+                const normalized = 1 - ((value - min) / range);
+                const colors = ['bg-red-900', 'bg-red-800', 'bg-red-700', 'bg-red-600', 'bg-red-500',
+                    'bg-green-500', 'bg-green-600', 'bg-green-700', 'bg-green-800', 'bg-green-900'];
                 const index = Math.floor(normalized * (colors.length - 1));
                 return colors[Math.max(0, Math.min(colors.length - 1, index))];
             };
@@ -353,10 +340,11 @@
                     const dashData = dashboardData.map(d => ({
                         Trader: d.trader, Account: d.account, Latest_Date: d.latestDate,
                         Equity: d.equity, Net_Invested: d.netInvested, 'P/L': d.pl, 'P/L_%': d.plPercent,
-                        'Current_DD_%': d.currentDrawdown, 'Max_DD_%': d.maxDrawdown, 'Avg_DD_%': d.avgDrawdown,
-                        Recovery_Factor: d.recoveryFactor, Recent_Daily_PL: d.currentDailyPL3pt !== null ? d.currentDailyPL3pt : '',
+                        Recent_Daily_PL: d.currentDailyPL3pt !== null ? d.currentDailyPL3pt : '',
                         'Days_in_avg': d.currentDailyPL3ptDays, daily_PL_since_start: d.dailyPLSinceStart,
-                        Smart_Prediction_14d: d.estDailyPL, 'Daily_PL%_Since_Start': d.dailyPlPercentSinceStart
+                        Smart_Prediction_14d: d.estDailyPL, 'Daily_PL%_Since_Start': d.dailyPlPercentSinceStart,
+                        'Current_DD_%': d.currentDrawdown, 'Max_DD_%': d.maxDrawdown, 'Avg_DD_%': d.avgDrawdown,
+                        Recovery_Factor: d.recoveryFactor
                     }));
                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dashData), 'Trader_View');
                 }
@@ -440,14 +428,14 @@
                                                 <th className="text-right py-3 px-2 font-semibold">Net_Invested</th>
                                                 <th className="text-right py-3 px-2 font-semibold">P/L</th>
                                                 <th className="text-right py-3 px-2 font-semibold">P/L %</th>
-                                                <th className="text-right py-3 px-2 font-semibold">Current DD %</th>
-                                                <th className="text-right py-3 px-2 font-semibold">Max DD %</th>
-                                                <th className="text-right py-3 px-2 font-semibold">Avg DD %</th>
-                                                <th className="text-right py-3 px-2 font-semibold">Recovery Factor</th>
                                                 <th className="text-right py-3 px-2 font-semibold">Recent Daily PL<div className="text-xs font-normal text-slate-400 mt-1">(avg last 1-3 days)</div></th>
                                                 <th className="text-right py-3 px-2 font-semibold">daily P/L since start</th>
                                                 <th className="text-right py-3 px-2 font-semibold">Smart Prediction<div className="text-xs font-normal text-slate-400 mt-1">(14d weighted avg)</div></th>
                                                 <th className="text-right py-3 px-2 font-semibold">Daily_Pl% Since_Start</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Current DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Max DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Avg DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Recovery Factor</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -463,18 +451,6 @@
                                                     </td>
                                                     <td className={`text-right py-3 px-2 ${getHeatmapColor(row.plPercent, plPercentValues)} font-semibold text-white`}>
                                                         {row.plPercent.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.currentDrawdown, currentDDValues)} font-semibold text-white`}>
-                                                        {row.currentDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.maxDrawdown, maxDDValues)} font-semibold text-white`}>
-                                                        {row.maxDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.avgDrawdown, avgDDValues)} font-semibold text-white`}>
-                                                        {row.avgDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmapColor(row.recoveryFactor, recoveryFactorValues)} font-semibold text-white`}>
-                                                        {row.recoveryFactor.toFixed(2)}
                                                     </td>
                                                     <td className={`text-right py-3 px-2 text-white border-l-4 ${row.currentDailyPL3pt !== null ? `${getHeatmapColor(row.currentDailyPL3pt, dailyPLValues, false)} ${getDailyPLBorderColor(row.currentDailyPL3ptDays)}` : 'bg-slate-700'}`}
                                                         title={row.currentDailyPL3pt !== null ? `Average of last ${row.currentDailyPL3ptDays} day${row.currentDailyPL3ptDays > 1 ? 's' : ''}` : ''}>
@@ -495,6 +471,18 @@
                                                     <td className={`text-right py-3 px-2 ${getHeatmapColor(row.dailyPlPercentSinceStart, dailyPercentValues)} font-semibold text-white`}>
                                                         {row.dailyPlPercentSinceStart.toFixed(2)}%
                                                     </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.currentDrawdown, currentDDValues)} font-semibold text-white`}>
+                                                        {row.currentDrawdown.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.maxDrawdown, maxDDValues)} font-semibold text-white`}>
+                                                        {row.maxDrawdown.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.avgDrawdown, avgDDValues)} font-semibold text-white`}>
+                                                        {row.avgDrawdown.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getHeatmapColor(row.recoveryFactor, recoveryFactorValues)} font-semibold text-white`}>
+                                                        {row.recoveryFactor.toFixed(2)}
+                                                    </td>
                                                 </tr>
                                             ))}
                                             <tr className="bg-slate-700 font-bold">
@@ -504,17 +492,13 @@
                                                 </td>
                                                 <td className="py-3 px-2"></td>
                                                 <td className="py-3 px-2"></td>
-                                                <td className="py-3 px-2"></td>
-                                                <td className="py-3 px-2"></td>
-                                                <td className="py-3 px-2"></td>
-                                                <td className="py-3 px-2"></td>
                                                 <td className={`text-right py-3 px-2 ${totals.dailyPLSinceStart >= 0 ? 'bg-green-600' : 'bg-red-600'} text-white`}>
                                                     {totals.dailyPLSinceStart.toFixed(0)}Ft
                                                 </td>
                                                 <td className={`text-right py-3 px-2 ${totals.estDailyPL >= 0 ? 'bg-green-600' : 'bg-red-600'} text-white`}>
                                                     {totals.estDailyPL.toFixed(0)}Ft
                                                 </td>
-                                                <td className="py-3 px-2"></td>
+                                                <td colSpan="5" className="py-3 px-2"></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -692,7 +676,7 @@
                             </div>
                         )}
                     </div>
-                </div>
+                </</div>
             );
         }
 
