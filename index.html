@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.5.0/dist/Recharts.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -49,12 +49,6 @@
             const [chartType, setChartType] = useState('equity');
             const [transactions, setTransactions] = useState([]);
             const [snapshots, setSnapshots] = useState([]);
-            const [sortColumn, setSortColumn] = useState('trader');
-            const [sortDirection, setSortDirection] = useState('asc');
-            const [showFilters, setShowFilters] = useState(false);
-            const [filters, setFilters] = useState({});
-            const [savedFilters, setSavedFilters] = useState([]);
-            const [filterName, setFilterName] = useState('');
             const [newData, setNewData] = useState({
                 dataType: 'snapshot',
                 date: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
@@ -104,6 +98,15 @@
                 const d2 = parseDate(date2Str);
                 if (!d1 || !d2) return 0;
                 return Math.floor((d1 - d2) / (1000 * 60 * 60 * 24));
+            };
+
+            const trimMean = (values, percent) => {
+                if (values.length === 0) return 0;
+                const sorted = [...values].sort((a, b) => a - b);
+                const trimCount = Math.floor(sorted.length * percent / 2);
+                if (trimCount === 0) return sorted.reduce((sum, val) => sum + val, 0) / sorted.length;
+                const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+                return trimmed.length > 0 ? trimmed.reduce((sum, val) => sum + val, 0) / trimmed.length : 0;
             };
 
             const weightedAverage = (snapsWithDates, maxDays = 14) => {
@@ -236,41 +239,9 @@
                     };
                 });
 
-                let filtered = accountFilter === 'All' ? data : data.filter(d => d.account === accountFilter);
-                
-                Object.keys(filters).forEach(column => {
-                    const filter = filters[column];
-                    if (!filter || !filter.enabled) return;
-                    
-                    filtered = filtered.filter(row => {
-                        const value = row[column];
-                        if (filter.type === 'range') {
-                            const min = filter.min !== '' ? parseFloat(filter.min) : -Infinity;
-                            const max = filter.max !== '' ? parseFloat(filter.max) : Infinity;
-                            return value >= min && value <= max;
-                        } else if (filter.type === 'text') {
-                            return row[column].toLowerCase().includes(filter.value.toLowerCase());
-                        }
-                        return true;
-                    });
-                });
-
-                filtered.sort((a, b) => {
-                    let aVal = a[sortColumn];
-                    let bVal = b[sortColumn];
-                    
-                    if (typeof aVal === 'string') {
-                        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                    }
-                    
-                    if (aVal === null) aVal = -Infinity;
-                    if (bVal === null) bVal = -Infinity;
-                    
-                    return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-                });
-
-                return filtered;
-            }, [snapshotsWithCalcs, transactions, accountFilter, filters, sortColumn, sortDirection]);
+                const filtered = accountFilter === 'All' ? data : data.filter(d => d.account === accountFilter);
+                return filtered.sort((a, b) => a.trader.localeCompare(b.trader));
+            }, [snapshotsWithCalcs, transactions, accountFilter]);
 
             const totals = useMemo(() => ({
                 pl: dashboardData.reduce((sum, d) => sum + d.pl, 0),
@@ -279,95 +250,6 @@
             }), [dashboardData]);
 
             const traderNames = useMemo(() => [...new Set(transactions.map(t => t.trader))].sort(), [transactions]);
-
-            useEffect(() => {
-                if (traderNames.length > 0 && selectedTraders.length === 0) {
-                    setSelectedTraders(traderNames.slice(0, Math.min(5, traderNames.length)));
-                }
-            }, [traderNames]);
-
-            const chartColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#a855f7', '#eab308', '#22c55e', '#f43f5e'];
-
-            const timelineData = useMemo(() => {
-                if (!selectedTraders.length) return [];
-                const filtered = snapshotsWithCalcs.filter(s => 
-                    selectedTraders.includes(s.trader) && 
-                    (accountFilter === 'All' || s.account === accountFilter)
-                );
-                const dates = [...new Set(filtered.map(s => s.date))].sort((a, b) => parseDate(a) - parseDate(b));
-                return dates.map(date => {
-                    const point = { date };
-                    selectedTraders.forEach(trader => {
-                        const snap = filtered.find(s => s.trader === trader && s.date === date);
-                        if (snap) {
-                            const txs = transactions.filter(t => t.trader === trader && t.account === snap.account);
-                            const netInv = txs.filter(t => parseDate(t.date) <= parseDate(date))
-                                .reduce((sum, t) => sum + (t.type === 'DEPOSIT' ? t.amount : t.type === 'WITHDRAWAL' ? -t.amount : 0), 0);
-                            const pl = snap.equity - netInv;
-                            const plPct = netInv > 0 ? (pl / netInv) * 100 : 0;
-                            point[`${trader}_equity`] = snap.equity;
-                            point[`${trader}_pl`] = pl;
-                            point[`${trader}_plPercent`] = plPct;
-                            point[`${trader}_drawdown`] = snap.currentDrawdown || 0;
-                        }
-                    });
-                    return point;
-                });
-            }, [snapshotsWithCalcs, selectedTraders, accountFilter, transactions]);
-
-            const toggleTrader = (trader) => {
-                setSelectedTraders(prev => 
-                    prev.includes(trader) ? prev.filter(t => t !== trader) : [...prev, trader]
-                );
-            };
-
-            const selectAllTraders = () => setSelectedTraders([...traderNames]);
-            const clearAllTraders = () => setSelectedTraders([]);
-
-            const handleSort = (column) => {
-                if (sortColumn === column) {
-                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                } else {
-                    setSortColumn(column);
-                    setSortDirection('asc');
-                }
-            };
-
-            const updateFilter = (column, filterData) => {
-                setFilters(prev => ({
-                    ...prev,
-                    [column]: filterData
-                }));
-            };
-
-            const clearFilters = () => {
-                setFilters({});
-            };
-
-            const saveFilterView = () => {
-                if (!filterName.trim()) {
-                    alert('Please enter a filter name');
-                    return;
-                }
-                const newView = {
-                    name: filterName,
-                    filters: filters,
-                    timestamp: new Date().toISOString()
-                };
-                setSavedFilters(prev => [...prev, newView]);
-                setFilterName('');
-                alert(`Filter view "${filterName}" saved!`);
-            };
-
-            const loadFilterView = (view) => {
-                setFilters(view.filters);
-            };
-
-            const deleteFilterView = (index) => {
-                if (confirm(`Delete filter view "${savedFilters[index].name}"?`)) {
-                    setSavedFilters(prev => prev.filter((_, i) => i !== index));
-                }
-            };
 
             const addData = async () => {
                 try {
@@ -430,9 +312,9 @@
                 const max = Math.max(...validValues);
                 if (min === max) return value <= 5 ? 'bg-green-500' : 'bg-red-500';
                 const range = max - min;
-                const normalized = 1 - ((value - min) / range);
-                const colors = ['bg-red-900', 'bg-red-800', 'bg-red-700', 'bg-red-600', 'bg-red-500',
-                    'bg-green-500', 'bg-green-600', 'bg-green-700', 'bg-green-800', 'bg-green-900'];
+                const normalized = (value - min) / range;
+                const colors = ['bg-green-900', 'bg-green-800', 'bg-green-700', 'bg-green-600', 'bg-green-500',
+                    'bg-red-500', 'bg-red-600', 'bg-red-700', 'bg-red-800', 'bg-red-900'];
                 const index = Math.floor(normalized * (colors.length - 1));
                 return colors[Math.max(0, Math.min(colors.length - 1, index))];
             };
@@ -471,25 +353,12 @@
                     const dashData = dashboardData.map(d => ({
                         Trader: d.trader, Account: d.account, Latest_Date: d.latestDate,
                         Equity: d.equity, Net_Invested: d.netInvested, 'P/L': d.pl, 'P/L_%': d.plPercent,
+                        'Current_DD_%': d.currentDrawdown, 'Max_DD_%': d.maxDrawdown, 'Avg_DD_%': d.avgDrawdown,
                         Recovery_Factor: d.recoveryFactor, Recent_Daily_PL: d.currentDailyPL3pt !== null ? d.currentDailyPL3pt : '',
                         'Days_in_avg': d.currentDailyPL3ptDays, daily_PL_since_start: d.dailyPLSinceStart,
-                        Smart_Prediction_14d: d.estDailyPL, 'Daily_PL%_Since_Start': d.dailyPlPercentSinceStart,
-                        'Current_DD_%': d.currentDrawdown, 'Max_DD_%': d.maxDrawdown, 'Avg_DD_%': d.avgDrawdown
+                        Smart_Prediction_14d: d.estDailyPL, 'Daily_PL%_Since_Start': d.dailyPlPercentSinceStart
                     }));
                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dashData), 'Trader_View');
-                }
-                if (type === 'timeline') {
-                    const timelineExport = timelineData.map(point => {
-                        const row = { Date: point.date };
-                        selectedTraders.forEach(trader => {
-                            row[`${trader}_Equity`] = point[`${trader}_equity`] || '';
-                            row[`${trader}_PL`] = point[`${trader}_pl`] || '';
-                            row[`${trader}_PL%`] = point[`${trader}_plPercent`] || '';
-                            row[`${trader}_DD%`] = point[`${trader}_drawdown`] || '';
-                        });
-                        return row;
-                    });
-                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(timelineExport), 'Timeline');
                 }
                 XLSX.writeFile(wb, `etoro_data_${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
             };
@@ -501,17 +370,13 @@
                             <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                                 eToro Copy Trader Dashboard
                             </h1>
-                            <p className="text-slate-400">Firebase Real-time Sync Active - {transactions.length} transactions, {snapshots.length} snapshots</p>
+                            <p className="text-slate-400">Firebase Real-time Sync - {transactions.length} transactions, {snapshots.length} snapshots</p>
                         </div>
 
                         <div className="flex gap-2 mb-6 flex-wrap">
                             <button onClick={() => setActiveTab('dashboard')}
                                 className={`px-6 py-3 rounded-lg font-semibold transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                 Trader View
-                            </button>
-                            <button onClick={() => setActiveTab('timeline')}
-                                className={`px-6 py-3 rounded-lg font-semibold transition-all ${activeTab === 'timeline' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
-                                Performance Timeline
                             </button>
                             <button onClick={() => setActiveTab('transactions')}
                                 className={`px-6 py-3 rounded-lg font-semibold transition-all ${activeTab === 'transactions' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
@@ -558,107 +423,31 @@
                                         <option>Virtual</option>
                                         <option>Real</option>
                                     </select>
-                                    <button onClick={() => setShowFilters(!showFilters)}
-                                        className={`px-4 py-2 rounded-lg font-semibold transition-colors ${showFilters ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'}`}>
-                                        {showFilters ? 'Hide Filters' : 'Show Filters'} ({Object.keys(filters).filter(k => filters[k]?.enabled).length})
-                                    </button>
-                                    {Object.keys(filters).some(k => filters[k]?.enabled) && (
-                                        <button onClick={clearFilters}
-                                            className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded-lg font-semibold transition-colors">
-                                            Clear Filters
-                                        </button>
-                                    )}
                                     <button onClick={() => exportToXLSX('dashboard')}
                                         className="ml-auto bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg">
                                         Export XLSX
                                     </button>
                                 </div>
 
-                                {showFilters && (
-                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 space-y-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-lg font-semibold">Column Filters</h3>
-                                            <div className="flex gap-2">
-                                                <input type="text" placeholder="Filter view name..." value={filterName}
-                                                    onChange={(e) => setFilterName(e.target.value)}
-                                                    className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                                                <button onClick={saveFilterView}
-                                                    className="bg-blue-600 hover:bg-blue-700 px-4 py-1 rounded-lg text-sm font-semibold transition-colors">
-                                                    Save View
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        {savedFilters.length > 0 && (
-                                            <div className="mb-4">
-                                                <div className="text-sm font-semibold mb-2">Saved Filter Views:</div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {savedFilters.map((view, idx) => (
-                                                        <div key={idx} className="bg-slate-700 px-3 py-1 rounded-lg flex items-center gap-2">
-                                                            <button onClick={() => loadFilterView(view)}
-                                                                className="text-blue-400 hover:text-blue-300 text-sm">
-                                                                {view.name}
-                                                            </button>
-                                                            <button onClick={() => deleteFilterView(idx)}
-                                                                className="text-red-400 hover:text-red-300 text-xs">
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            <FilterControl column="equity" label="Equity" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="netInvested" label="Net Invested" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="pl" label="P/L" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="plPercent" label="P/L %" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="recoveryFactor" label="Recovery Factor" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="currentDailyPL3pt" label="Recent Daily PL" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="dailyPLSinceStart" label="Daily PL Since Start" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="estDailyPL" label="Smart Prediction" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="dailyPlPercentSinceStart" label="Daily PL% Since Start" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="currentDrawdown" label="Current DD %" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="maxDrawdown" label="Max DD %" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="avgDrawdown" label="Avg DD %" type="range" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="trader" label="Trader" type="text" filters={filters} updateFilter={updateFilter} />
-                                            <FilterControl column="account" label="Account" type="text" filters={filters} updateFilter={updateFilter} />
-                                        </div>
-                                    </div>
-                                )}
-
                                 <div className="bg-slate-800 rounded-xl p-6 shadow-2xl border border-slate-700 overflow-x-auto">
                                     <table className="w-full text-sm">
                                         <thead>
                                             <tr className="border-b border-slate-700">
-                                                <SortableHeader column="trader" label="Trader" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
-                                                <SortableHeader column="account" label="Account" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
-                                                <SortableHeader column="latestDate" label="Latest Date" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
-                                                <SortableHeader column="equity" label="Equity" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="netInvested" label="Net Invested" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="pl" label="P/L" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="plPercent" label="P/L %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="recoveryFactor" label="Recovery Factor" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <th className="text-right py-3 px-2 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('currentDailyPL3pt')}>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        Recent Daily PL
-                                                        {sortColumn === 'currentDailyPL3pt' && <span>{sortDirection === 'asc' ? '▲' : '▼'}</span>}
-                                                    </div>
-                                                    <div className="text-xs font-normal text-slate-400 mt-1">(avg last 1-3 days)</div>
-                                                </th>
-                                                <SortableHeader column="dailyPLSinceStart" label="Daily P/L Since Start" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <th className="text-right py-3 px-2 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('estDailyPL')}>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        Smart Prediction
-                                                        {sortColumn === 'estDailyPL' && <span>{sortDirection === 'asc' ? '▲' : '▼'}</span>}
-                                                    </div>
-                                                    <div className="text-xs font-normal text-slate-400 mt-1">(14d weighted avg)</div>
-                                                </th>
-                                                <SortableHeader column="dailyPlPercentSinceStart" label="Daily PL% Since Start" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="currentDrawdown" label="Current DD %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="maxDrawdown" label="Max DD %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="avgDrawdown" label="Avg DD %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                <th className="text-left py-3 px-2 font-semibold">Trader</th>
+                                                <th className="text-left py-3 px-2 font-semibold">Account</th>
+                                                <th className="text-left py-3 px-2 font-semibold">Latest_Date</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Equity</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Net_Invested</th>
+                                                <th className="text-right py-3 px-2 font-semibold">P/L</th>
+                                                <th className="text-right py-3 px-2 font-semibold">P/L %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Current DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Max DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Avg DD %</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Recovery Factor</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Recent Daily PL<div className="text-xs font-normal text-slate-400 mt-1">(avg last 1-3 days)</div></th>
+                                                <th className="text-right py-3 px-2 font-semibold">daily P/L since start</th>
+                                                <th className="text-right py-3 px-2 font-semibold">Smart Prediction<div className="text-xs font-normal text-slate-400 mt-1">(14d weighted avg)</div></th>
+                                                <th className="text-right py-3 px-2 font-semibold">Daily_Pl% Since_Start</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -674,6 +463,15 @@
                                                     </td>
                                                     <td className={`text-right py-3 px-2 ${getHeatmapColor(row.plPercent, plPercentValues)} font-semibold text-white`}>
                                                         {row.plPercent.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.currentDrawdown, currentDDValues)} font-semibold text-white`}>
+                                                        {row.currentDrawdown.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.maxDrawdown, maxDDValues)} font-semibold text-white`}>
+                                                        {row.maxDrawdown.toFixed(2)}%
+                                                    </td>
+                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.avgDrawdown, avgDDValues)} font-semibold text-white`}>
+                                                        {row.avgDrawdown.toFixed(2)}%
                                                     </td>
                                                     <td className={`text-right py-3 px-2 ${getHeatmapColor(row.recoveryFactor, recoveryFactorValues)} font-semibold text-white`}>
                                                         {row.recoveryFactor.toFixed(2)}
@@ -697,15 +495,6 @@
                                                     <td className={`text-right py-3 px-2 ${getHeatmapColor(row.dailyPlPercentSinceStart, dailyPercentValues)} font-semibold text-white`}>
                                                         {row.dailyPlPercentSinceStart.toFixed(2)}%
                                                     </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.currentDrawdown, currentDDValues)} font-semibold text-white`}>
-                                                        {row.currentDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.maxDrawdown, maxDDValues)} font-semibold text-white`}>
-                                                        {row.maxDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDrawdownColor(row.avgDrawdown, avgDDValues)} font-semibold text-white`}>
-                                                        {row.avgDrawdown.toFixed(2)}%
-                                                    </td>
                                                 </tr>
                                             ))}
                                             <tr className="bg-slate-700 font-bold">
@@ -716,154 +505,20 @@
                                                 <td className="py-3 px-2"></td>
                                                 <td className="py-3 px-2"></td>
                                                 <td className="py-3 px-2"></td>
+                                                <td className="py-3 px-2"></td>
+                                                <td className="py-3 px-2"></td>
+                                                <td className="py-3 px-2"></td>
                                                 <td className={`text-right py-3 px-2 ${totals.dailyPLSinceStart >= 0 ? 'bg-green-600' : 'bg-red-600'} text-white`}>
                                                     {totals.dailyPLSinceStart.toFixed(0)}Ft
                                                 </td>
                                                 <td className={`text-right py-3 px-2 ${totals.estDailyPL >= 0 ? 'bg-green-600' : 'bg-red-600'} text-white`}>
                                                     {totals.estDailyPL.toFixed(0)}Ft
                                                 </td>
-                                                <td colSpan="4" className="py-3 px-2"></td>
+                                                <td className="py-3 px-2"></td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'timeline' && (
-                            <div className="space-y-6">
-                                <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                                    <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
-                                        <div className="flex gap-2 items-center">
-                                            <span className="text-slate-300">Account:</span>
-                                            <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}
-                                                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                                <option>All</option>
-                                                <option>Virtual</option>
-                                                <option>Real</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex gap-2 items-center">
-                                            <span className="text-slate-300">Chart Type:</span>
-                                            <select value={chartType} onChange={(e) => setChartType(e.target.value)}
-                                                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                                <option value="equity">Equity Over Time</option>
-                                                <option value="pl">P/L Over Time</option>
-                                                <option value="plPercent">P/L % Over Time</option>
-                                                <option value="drawdown">Drawdown Over Time</option>
-                                            </select>
-                                        </div>
-                                        <button onClick={() => exportToXLSX('timeline')}
-                                            className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg">
-                                            Export Timeline
-                                        </button>
-                                    </div>
-                                    <div className="mb-4">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <span className="text-slate-300 font-semibold">Select Traders:</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={selectAllTraders} className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition-colors">
-                                                    Select All
-                                                </button>
-                                                <button onClick={clearAllTraders} className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-sm transition-colors">
-                                                    Clear
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {traderNames.map((trader, idx) => (
-                                                <button key={trader} onClick={() => toggleTrader(trader)}
-                                                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedTraders.includes(trader) ? 'ring-2 ring-white' : 'opacity-50'}`}
-                                                    style={{ backgroundColor: chartColors[idx % chartColors.length] }}>
-                                                    {trader}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {selectedTraders.length > 0 && timelineData.length > 0 && (
-                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-                                        <h3 className="text-xl font-semibold mb-4">
-                                            {chartType === 'equity' ? 'Equity Over Time' :
-                                             chartType === 'pl' ? 'P/L Over Time' :
-                                             chartType === 'plPercent' ? 'P/L % Over Time' : 'Drawdown Over Time'}
-                                        </h3>
-                                        <ResponsiveContainer width="100%" height={400}>
-                                            <LineChart data={timelineData}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                                <XAxis dataKey="date" stroke="#9ca3af" />
-                                                <YAxis stroke="#9ca3af" />
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                                                    labelStyle={{ color: '#9ca3af' }}
-                                                    formatter={(value) => {
-                                                        if (chartType === 'equity' || chartType === 'pl') return `${value.toFixed(0)} Ft`;
-                                                        if (chartType === 'plPercent' || chartType === 'drawdown') return `${value.toFixed(2)}%`;
-                                                        return value;
-                                                    }} 
-                                                />
-                                                <Legend />
-                                                {selectedTraders.map((trader, idx) => (
-                                                    <Line 
-                                                        key={trader} 
-                                                        type="monotone" 
-                                                        dataKey={`${trader}_${chartType === 'plPercent' ? 'plPercent' : chartType}`}
-                                                        stroke={chartColors[traderNames.indexOf(trader) % chartColors.length]}
-                                                        name={trader} 
-                                                        strokeWidth={2} 
-                                                        dot={false} 
-                                                    />
-                                                ))}
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                )}
-
-                                {selectedTraders.length > 0 && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {selectedTraders.map((trader, idx) => {
-                                            const traderData = dashboardData.find(d => d.trader === trader);
-                                            if (!traderData) return null;
-                                            return (
-                                                <div key={trader} className="bg-slate-800 rounded-xl p-4 border-l-4 border border-slate-700" 
-                                                    style={{ borderLeftColor: chartColors[traderNames.indexOf(trader) % chartColors.length] }}>
-                                                    <h4 className="font-bold text-lg mb-3">{trader}</h4>
-                                                    <div className="space-y-2 text-sm">
-                                                        <div className="flex justify-between">
-                                                            <span className="text-slate-400">P/L:</span>
-                                                            <span className={traderData.pl >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
-                                                                {traderData.pl.toFixed(0)} Ft
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-slate-400">P/L %:</span>
-                                                            <span className={traderData.plPercent >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
-                                                                {traderData.plPercent.toFixed(2)}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-slate-400">Max DD:</span>
-                                                            <span className="text-orange-400 font-semibold">{traderData.maxDrawdown.toFixed(2)}%</span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-slate-400">Recovery Factor:</span>
-                                                            <span className={traderData.recoveryFactor >= 1 ? 'text-green-400 font-semibold' : 'text-yellow-400 font-semibold'}>
-                                                                {traderData.recoveryFactor.toFixed(2)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {selectedTraders.length === 0 && (
-                                    <div className="bg-slate-800 rounded-xl p-12 border border-slate-700 text-center">
-                                        <p className="text-slate-400 text-lg">Select traders above to view performance timeline</p>
-                                    </div>
-                                )}
                             </div>
                         )}
 
@@ -1037,50 +692,6 @@
                             </div>
                         )}
                     </div>
-                </div>
-            );
-        }
-
-        function SortableHeader({ column, label, sortColumn, sortDirection, handleSort, align = 'left' }) {
-            return (
-                <th className={`text-${align} py-3 px-2 font-semibold cursor-pointer hover:bg-slate-700 transition-colors`}
-                    onClick={() => handleSort(column)}>
-                    <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
-                        {label}
-                        {sortColumn === column && (
-                            <span className="text-blue-400">{sortDirection === 'asc' ? '▲' : '▼'}</span>
-                        )}
-                    </div>
-                </th>
-            );
-        }
-
-        function FilterControl({ column, label, type, filters, updateFilter }) {
-            const filter = filters[column] || { enabled: false, type, min: '', max: '', value: '' };
-
-            return (
-                <div className="bg-slate-700 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                        <input type="checkbox" checked={filter.enabled}
-                            onChange={(e) => updateFilter(column, { ...filter, enabled: e.target.checked })}
-                            className="w-4 h-4" />
-                        <label className="text-sm font-semibold">{label}</label>
-                    </div>
-                    {type === 'range' && (
-                        <div className="flex gap-2">
-                            <input type="number" placeholder="Min" value={filter.min || ''}
-                                onChange={(e) => updateFilter(column, { ...filter, min: e.target.value, type: 'range', enabled: true })}
-                                className="w-full bg-slate-600 border border-slate-500 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            <input type="number" placeholder="Max" value={filter.max || ''}
-                                onChange={(e) => updateFilter(column, { ...filter, max: e.target.value, type: 'range', enabled: true })}
-                                className="w-full bg-slate-600 border border-slate-500 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                    )}
-                    {type === 'text' && (
-                        <input type="text" placeholder={`Search ${label.toLowerCase()}...`} value={filter.value || ''}
-                            onChange={(e) => updateFilter(column, { ...filter, value: e.target.value, type: 'text', enabled: true })}
-                            className="w-full bg-slate-600 border border-slate-500 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    )}
                 </div>
             );
         }
