@@ -91,6 +91,8 @@
             const [filters, setFilters] = useState({});
             const [savedFilters, setSavedFilters] = useState([]);
             const [filterName, setFilterName] = useState('');
+            const [selectedTraders, setSelectedTraders] = useState([]);
+            const [chartType, setChartType] = useState('equity');
             const [newData, setNewData] = useState({
                 dataType: 'snapshot',
                 date: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
@@ -229,6 +231,50 @@
 
             const traderNames = useMemo(() => [...new Set(transactions.map(t => t.trader))].sort(), [transactions]);
 
+            useEffect(() => {
+                if (traderNames.length > 0 && selectedTraders.length === 0) {
+                    setSelectedTraders(traderNames.slice(0, 5));
+                }
+            }, [traderNames]);
+
+            const chartColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#a855f7', '#eab308', '#22c55e', '#f43f5e'];
+
+            const timelineData = useMemo(() => {
+                if (!selectedTraders.length) return [];
+                const filtered = snapshotsWithCalcs.filter(s => 
+                    selectedTraders.includes(s.trader) && 
+                    (accountFilter === 'All' || s.account === accountFilter)
+                );
+                const dates = [...new Set(filtered.map(s => s.date))].sort((a, b) => parseDate(a) - parseDate(b));
+                return dates.map(date => {
+                    const point = { date };
+                    selectedTraders.forEach(trader => {
+                        const snap = filtered.find(s => s.trader === trader && s.date === date);
+                        if (snap) {
+                            const txs = transactions.filter(t => t.trader === trader && t.account === snap.account);
+                            const netInv = txs.filter(t => parseDate(t.date) <= parseDate(date))
+                                .reduce((sum, t) => sum + (t.type === 'DEPOSIT' ? t.amount : t.type === 'WITHDRAWAL' ? -t.amount : 0), 0);
+                            const pl = snap.equity - netInv;
+                            const plPct = netInv > 0 ? (pl / netInv) * 100 : 0;
+                            point[`${trader}_equity`] = snap.equity;
+                            point[`${trader}_pl`] = pl;
+                            point[`${trader}_plPercent`] = plPct;
+                            point[`${trader}_drawdown`] = snap.currentDrawdown || 0;
+                        }
+                    });
+                    return point;
+                });
+            }, [snapshotsWithCalcs, selectedTraders, accountFilter, transactions]);
+
+            const toggleTrader = (trader) => {
+                setSelectedTraders(prev => 
+                    prev.includes(trader) ? prev.filter(t => t !== trader) : [...prev, trader]
+                );
+            };
+
+            const selectAllTraders = () => setSelectedTraders([...traderNames]);
+            const clearAllTraders = () => setSelectedTraders([]);
+
             const handleSort = (col) => {
                 if (sortColumn === col) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
                 else { setSortColumn(col); setSortDirection('asc'); }
@@ -320,6 +366,19 @@
                         DailyPct: d.dailyPlPercentSinceStart, CurrDD: d.currentDrawdown, MaxDD: d.maxDrawdown, AvgDD: d.avgDrawdown
                     }))), 'Dashboard');
                 }
+                if (type === 'timeline') {
+                    const timelineExport = timelineData.map(point => {
+                        const row = { Date: point.date };
+                        selectedTraders.forEach(trader => {
+                            row[`${trader}_Equity`] = point[`${trader}_equity`];
+                            row[`${trader}_PL`] = point[`${trader}_pl`];
+                            row[`${trader}_PL%`] = point[`${trader}_plPercent`];
+                            row[`${trader}_DD%`] = point[`${trader}_drawdown`];
+                        });
+                        return row;
+                    });
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(timelineExport), 'Timeline');
+                }
                 XLSX.writeFile(wb, `etoro_${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
             };
 
@@ -334,10 +393,10 @@
                         </div>
 
                         <div className="flex gap-2 mb-6 flex-wrap">
-                            {['dashboard', 'transactions', 'snapshots'].map(tab => (
+                            {['dashboard', 'timeline', 'transactions', 'snapshots'].map(tab => (
                                 <button key={tab} onClick={() => setActiveTab(tab)}
                                     className={`px-6 py-3 rounded-lg font-semibold ${activeTab === tab ? 'bg-blue-600 shadow-lg' : 'bg-slate-800 hover:bg-slate-700'}`}>
-                                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                    {tab === 'timeline' ? 'Performance Timeline' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                                 </button>
                             ))}
                         </div>
@@ -512,6 +571,128 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'timeline' && (
+                            <div className="space-y-6">
+                                <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                                    <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
+                                        <div className="flex gap-2 items-center">
+                                            <span className="text-slate-300">Account:</span>
+                                            <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}
+                                                className="bg-slate-700 rounded-lg px-4 py-2">
+                                                <option>All</option><option>Virtual</option><option>Real</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <span className="text-slate-300">Chart Type:</span>
+                                            <select value={chartType} onChange={(e) => setChartType(e.target.value)}
+                                                className="bg-slate-700 rounded-lg px-4 py-2">
+                                                <option value="equity">Equity Over Time</option>
+                                                <option value="pl">P/L Over Time</option>
+                                                <option value="plPercent">P/L % Over Time</option>
+                                                <option value="drawdown">Drawdown Over Time</option>
+                                            </select>
+                                        </div>
+                                        <button onClick={() => exportXLSX('timeline')} className="bg-green-600 px-6 py-2 rounded-lg font-semibold">
+                                            Export Timeline
+                                        </button>
+                                    </div>
+                                    <div className="mb-4">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <span className="text-slate-300 font-semibold">Select Traders:</span>
+                                            <div className="flex gap-2">
+                                                <button onClick={selectAllTraders} className="bg-blue-600 px-3 py-1 rounded text-sm">Select All</button>
+                                                <button onClick={clearAllTraders} className="bg-slate-700 px-3 py-1 rounded text-sm">Clear</button>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {traderNames.map((trader, idx) => (
+                                                <button key={trader} onClick={() => toggleTrader(trader)}
+                                                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedTraders.includes(trader) ? 'ring-2 ring-white' : 'opacity-50'}`}
+                                                    style={{ backgroundColor: chartColors[idx % chartColors.length] }}>
+                                                    {trader}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {selectedTraders.length > 0 && timelineData.length > 0 && (
+                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                                        <h3 className="text-xl font-semibold mb-4">
+                                            {chartType === 'equity' ? 'Equity Over Time' :
+                                             chartType === 'pl' ? 'P/L Over Time' :
+                                             chartType === 'plPercent' ? 'P/L % Over Time' : 'Drawdown Over Time'}
+                                        </h3>
+                                        <ResponsiveContainer width="100%" height={400}>
+                                            <LineChart data={timelineData}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                                <XAxis dataKey="date" stroke="#9ca3af" />
+                                                <YAxis stroke="#9ca3af" />
+                                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}
+                                                    formatter={(value) => {
+                                                        if (chartType === 'equity' || chartType === 'pl') return `${value.toFixed(0)} Ft`;
+                                                        if (chartType === 'plPercent' || chartType === 'drawdown') return `${value.toFixed(2)}%`;
+                                                        return value;
+                                                    }} />
+                                                <Legend />
+                                                {selectedTraders.map((trader, idx) => (
+                                                    <Line key={trader} type="monotone" 
+                                                        dataKey={`${trader}_${chartType === 'plPercent' ? 'plPercent' : chartType}`}
+                                                        stroke={chartColors[traderNames.indexOf(trader) % chartColors.length]}
+                                                        name={trader} strokeWidth={2} dot={false} />
+                                                ))}
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+
+                                {selectedTraders.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {selectedTraders.map((trader, idx) => {
+                                            const traderData = dashboardData.find(d => d.trader === trader);
+                                            if (!traderData) return null;
+                                            return (
+                                                <div key={trader} className="bg-slate-800 rounded-xl p-4 border-l-4" 
+                                                    style={{ borderLeftColor: chartColors[traderNames.indexOf(trader) % chartColors.length] }}>
+                                                    <h4 className="font-bold text-lg mb-3">{trader}</h4>
+                                                    <div className="space-y-2 text-sm">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-400">P/L:</span>
+                                                            <span className={traderData.pl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                                {traderData.pl.toFixed(0)} Ft
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-400">P/L %:</span>
+                                                            <span className={traderData.plPercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                                {traderData.plPercent.toFixed(2)}%
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-400">Max DD:</span>
+                                                            <span className="text-orange-400">{traderData.maxDrawdown.toFixed(2)}%</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-400">Recovery Factor:</span>
+                                                            <span className={traderData.recoveryFactor >= 1 ? 'text-green-400' : 'text-yellow-400'}>
+                                                                {traderData.recoveryFactor.toFixed(2)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {selectedTraders.length === 0 && (
+                                    <div className="bg-slate-800 rounded-xl p-12 border border-slate-700 text-center">
+                                        <p className="text-slate-400 text-lg">Select traders above to view performance timeline</p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
