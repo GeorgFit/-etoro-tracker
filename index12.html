@@ -15,7 +15,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBVE6eRSapt2fwVnLoQm2EfcScksg0OWiU",
@@ -30,7 +30,7 @@
         const db = getFirestore(app);
 
         window.firebaseDb = db;
-        window.firebaseUtils = { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc };
+        window.firebaseUtils = { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc };
         window.SECURITY_KEY = "my-secret-etoro-key-2024";
         window.firebaseReady = true;
     </script>
@@ -188,16 +188,49 @@
         }
 
         function SortableHeader({ column, label, sortColumn, sortDirection, handleSort, align = 'left' }) {
+            const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+            const justifyClass = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : '';
             return (
-                <th className={`text-${align} py-3 px-2 font-semibold cursor-pointer hover:bg-slate-700`}
+                <th className={`${alignClass} py-3 px-2 font-semibold cursor-pointer hover:bg-slate-700`}
                     onClick={() => handleSort(column)}>
-                    <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+                    <div className={`flex items-center gap-1 ${justifyClass}`}>
                         {label}
                         {sortColumn === column && <span className="text-blue-400">{sortDirection === 'asc' ? '▲' : '▼'}</span>}
                     </div>
                 </th>
             );
         }
+
+        const DASHBOARD_COLUMN_DEFS = [
+            { key: 'trader', label: 'Trader', sortable: true },
+            { key: 'account', label: 'Account', sortable: true },
+            { key: 'activity', label: 'Activity', sortable: false },
+            { key: 'rfGrade', label: 'RF Grade', sortable: false },
+            { key: 'ddRisk', label: 'DD Risk', sortable: false },
+            { key: 'entry', label: 'Entry', sortable: false },
+            { key: 'exit', label: 'Exit', sortable: false },
+            { key: 'action', label: 'Action', sortable: false },
+            { key: 'warnings', label: 'Warning', sortable: true },
+            { key: 'decision', label: 'Decision', sortable: true },
+            { key: 'equity', label: 'Equity', sortable: true },
+            { key: 'netInvested', label: 'Net Invested', sortable: true },
+            { key: 'pl', label: 'P/L', sortable: true },
+            { key: 'plPercent', label: 'P/L %', sortable: true },
+            { key: 'currentDailyPL3pt', label: 'Recent Daily', sortable: true },
+            { key: 'dailyPLSinceStart', label: 'Daily Start', sortable: true },
+            { key: 'estDailyPL', label: 'Smart Pred', sortable: true },
+            { key: 'dailyPlPercentSinceStart', label: 'Daily %', sortable: true },
+            { key: 'currentDrawdown', label: 'Curr DD', sortable: true },
+            { key: 'maxDrawdown', label: 'Max DD', sortable: true },
+            { key: 'recoveryFactor', label: 'Recovery', sortable: true }
+        ];
+
+        const DASHBOARD_COLUMN_DEFAULTS = DASHBOARD_COLUMN_DEFS.reduce((acc, col) => {
+            acc[col.key] = true;
+            return acc;
+        }, {});
+
+        const SORTABLE_COLUMN_KEYS = new Set(DASHBOARD_COLUMN_DEFS.filter(col => col.sortable).map(col => col.key));
 
         function EtoroTracker() {
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -210,6 +243,8 @@
             const [sortDirection, setSortDirection] = useState('asc');
             const [showFilters, setShowFilters] = useState(false);
             const [filters, setFilters] = useState({});
+            const [visibleColumns, setVisibleColumns] = useState(() => ({ ...DASHBOARD_COLUMN_DEFAULTS }));
+            const [showColumnControls, setShowColumnControls] = useState(false);
             const [savedFilters, setSavedFilters] = useState([]);
             const [filterName, setFilterName] = useState('');
             const [firebaseStatus, setFirebaseStatus] = useState('checking');
@@ -219,6 +254,56 @@
                 date: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
                 trader: '', account: 'Virtual', equity: '', amount: '', transactionType: 'DEPOSIT', note: ''
             });
+
+            const isColumnVisible = (key) => visibleColumns[key] !== false;
+
+            const visibleColumnCount = useMemo(() => Object.values(visibleColumns).filter(Boolean).length, [visibleColumns]);
+
+            const toggleColumnVisibility = (key) => {
+                setVisibleColumns(prev => {
+                    const isVisible = prev[key] !== false;
+                    const currentlyVisibleKeys = Object.entries(prev).filter(([, value]) => value).map(([colKey]) => colKey);
+                    if (isVisible) {
+                        if (currentlyVisibleKeys.length <= 1) return prev;
+                        const remaining = currentlyVisibleKeys.filter(colKey => colKey !== key);
+                        const remainingSortable = remaining.filter(colKey => SORTABLE_COLUMN_KEYS.has(colKey));
+                        if (SORTABLE_COLUMN_KEYS.has(key) && remainingSortable.length === 0) return prev;
+                    }
+                    return { ...prev, [key]: !prev[key] };
+                });
+            };
+
+            useEffect(() => {
+                if (typeof window === 'undefined' || !window.localStorage) return;
+                try {
+                    const saved = window.localStorage.getItem('dashboardVisibleColumns');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        setVisibleColumns(prev => ({ ...prev, ...parsed }));
+                    }
+                } catch (error) {
+                    console.warn('Failed to restore column visibility:', error);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (typeof window === 'undefined' || !window.localStorage) return;
+                try {
+                    window.localStorage.setItem('dashboardVisibleColumns', JSON.stringify(visibleColumns));
+                } catch (error) {
+                    console.warn('Failed to persist column visibility:', error);
+                }
+            }, [visibleColumns]);
+
+            useEffect(() => {
+                if (!isColumnVisible(sortColumn)) {
+                    const fallback = DASHBOARD_COLUMN_DEFS.find(col => col.sortable && isColumnVisible(col.key));
+                    if (fallback && fallback.key !== sortColumn) {
+                        setSortColumn(fallback.key);
+                        setSortDirection('asc');
+                    }
+                }
+            }, [visibleColumns, sortColumn]);
 
             useEffect(() => {
                 const initFirebase = async () => {
@@ -875,6 +960,7 @@
             const traderNames = useMemo(() => [...new Set(transactions.map(t => t.trader))].sort(), [transactions]);
 
             const handleSort = (col) => {
+                if (!isColumnVisible(col) || !SORTABLE_COLUMN_KEYS.has(col)) return;
                 if (sortColumn === col) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
                 else { setSortColumn(col); setSortDirection('asc'); }
             };
@@ -882,6 +968,17 @@
             const updateFilter = (col, data) => setFilters(prev => ({ ...prev, [col]: data }));
             const clearFilters = () => setFilters({});
             
+            const secureDelete = async (collectionName, id) => {
+                const { deleteDoc, doc, setDoc } = window.firebaseUtils;
+                const ref = doc(window.firebaseDb, collectionName, id);
+                try {
+                    await setDoc(ref, { securityKey: window.SECURITY_KEY }, { merge: true });
+                } catch (error) {
+                    console.warn(`Security key merge failed for ${collectionName}/${id}:`, error);
+                }
+                await deleteDoc(ref);
+            };
+
             const saveFilterView = async () => {
                 if (!filterName.trim()) return alert('Enter filter name');
                 try {
@@ -905,8 +1002,7 @@
             const deleteFilterView = async (id, name) => {
                 if (!confirm(`Delete "${name}"?`)) return;
                 try {
-                    const { deleteDoc, doc } = window.firebaseUtils;
-                    await deleteDoc(doc(window.firebaseDb, 'filter_views', id));
+                    await secureDelete('filter_views', id);
                 } catch (e) {
                     alert('Delete failed: ' + e.message);
                 }
@@ -914,8 +1010,7 @@
 
             const dismissAlert = async (id) => {
                 try {
-                    const { deleteDoc, doc } = window.firebaseUtils;
-                    await deleteDoc(doc(window.firebaseDb, 'alerts', id));
+                    await secureDelete('alerts', id);
                 } catch (e) {
                     alert('Dismiss failed: ' + e.message);
                 }
@@ -924,8 +1019,7 @@
             const deleteTransaction = async (id, trader, date) => {
                 if (!confirm(`Delete transaction for ${trader} on ${date}?`)) return;
                 try {
-                    const { deleteDoc, doc } = window.firebaseUtils;
-                    await deleteDoc(doc(window.firebaseDb, 'transactions', id));
+                    await secureDelete('transactions', id);
                 } catch (e) {
                     alert('Delete failed: ' + e.message);
                 }
@@ -934,8 +1028,7 @@
             const deleteSnapshot = async (id, trader, date) => {
                 if (!confirm(`Delete snapshot for ${trader} on ${date}?`)) return;
                 try {
-                    const { deleteDoc, doc } = window.firebaseUtils;
-                    await deleteDoc(doc(window.firebaseDb, 'snapshots', id));
+                    await secureDelete('snapshots', id);
                 } catch (e) {
                     alert('Delete failed: ' + e.message);
                 }
@@ -1143,6 +1236,10 @@
                                         className={`px-4 py-2 rounded-lg font-semibold ${showFilters ? 'bg-blue-600' : 'bg-slate-700'}`}>
                                         {showFilters ? 'Hide' : 'Show'} Filters ({Object.keys(filters).filter(k => filters[k]?.enabled).length})
                                     </button>
+                                    <button onClick={() => setShowColumnControls(!showColumnControls)}
+                                        className={`px-4 py-2 rounded-lg font-semibold ${showColumnControls ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                                        {showColumnControls ? 'Hide' : 'Show'} Columns ({visibleColumnCount})
+                                    </button>
                                     {Object.keys(filters).some(k => filters[k]?.enabled) && (
                                         <button onClick={clearFilters} className="bg-orange-600 px-4 py-2 rounded-lg font-semibold">
                                             Clear Filters
@@ -1212,30 +1309,96 @@
                                     </div>
                                 )}
 
+                                {showColumnControls && (
+                                    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-semibold">Visible Columns</h3>
+                                            <span className="text-sm text-slate-400">{visibleColumnCount} shown</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                            {DASHBOARD_COLUMN_DEFS.map(col => (
+                                                <label key={col.key} className="flex items-center gap-2 bg-slate-700 px-3 py-2 rounded-lg border border-slate-600">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4"
+                                                        checked={isColumnVisible(col.key)}
+                                                        onChange={() => toggleColumnVisibility(col.key)}
+                                                    />
+                                                    <span className="text-sm">{col.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-slate-400">At least one column must remain visible.</p>
+                                    </div>
+                                )}
+
                                 <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-x-auto">
                                     <table className="w-full text-xs">
                                         <thead>
                                             <tr className="border-b border-slate-700">
-                                                <SortableHeader column="trader" label="Trader" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
-                                                <SortableHeader column="account" label="Account" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
-                                                <th className="text-center py-3 px-2 font-semibold">Activity</th>
-                                                <th className="text-center py-3 px-2 font-semibold">RF Grade</th>
-                                                <th className="text-center py-3 px-2 font-semibold">DD Risk</th>
-                                                <th className="text-center py-3 px-2 font-semibold">Entry</th>
-                                                <th className="text-center py-3 px-2 font-semibold">Exit</th>
-                                                <th className="text-center py-3 px-2 font-semibold">Action</th>
-                                                <SortableHeader column="equity" label="Equity" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="pl" label="P/L" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="plPercent" label="P/L %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="currentDailyPL3pt" label="Recent Daily" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="dailyPLSinceStart" label="Daily Start" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="estDailyPL" label="Smart Pred" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="dailyPlPercentSinceStart" label="Daily %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="currentDrawdown" label="Curr DD" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="maxDrawdown" label="Max DD" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <SortableHeader column="recoveryFactor" label="Recovery" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
-                                                <th className="text-center py-3 px-2 font-semibold">Warning</th>
-                                                <th className="text-center py-3 px-2 font-semibold">Decision</th>
+                                                {isColumnVisible('trader') && (
+                                                    <SortableHeader column="trader" label="Trader" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
+                                                )}
+                                                {isColumnVisible('account') && (
+                                                    <SortableHeader column="account" label="Account" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} />
+                                                )}
+                                                {isColumnVisible('activity') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">Activity</th>
+                                                )}
+                                                {isColumnVisible('rfGrade') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">RF Grade</th>
+                                                )}
+                                                {isColumnVisible('ddRisk') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">DD Risk</th>
+                                                )}
+                                                {isColumnVisible('entry') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">Entry</th>
+                                                )}
+                                                {isColumnVisible('exit') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">Exit</th>
+                                                )}
+                                                {isColumnVisible('action') && (
+                                                    <th className="text-center py-3 px-2 font-semibold">Action</th>
+                                                )}
+                                                {isColumnVisible('warnings') && (
+                                                    <SortableHeader column="warnings" label="Warning" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="center" />
+                                                )}
+                                                {isColumnVisible('decision') && (
+                                                    <SortableHeader column="decision" label="Decision" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="center" />
+                                                )}
+                                                {isColumnVisible('equity') && (
+                                                    <SortableHeader column="equity" label="Equity" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('netInvested') && (
+                                                    <SortableHeader column="netInvested" label="Net Invested" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('pl') && (
+                                                    <SortableHeader column="pl" label="P/L" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('plPercent') && (
+                                                    <SortableHeader column="plPercent" label="P/L %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('currentDailyPL3pt') && (
+                                                    <SortableHeader column="currentDailyPL3pt" label="Recent Daily" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('dailyPLSinceStart') && (
+                                                    <SortableHeader column="dailyPLSinceStart" label="Daily Start" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('estDailyPL') && (
+                                                    <SortableHeader column="estDailyPL" label="Smart Pred" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('dailyPlPercentSinceStart') && (
+                                                    <SortableHeader column="dailyPlPercentSinceStart" label="Daily %" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('currentDrawdown') && (
+                                                    <SortableHeader column="currentDrawdown" label="Curr DD" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('maxDrawdown') && (
+                                                    <SortableHeader column="maxDrawdown" label="Max DD" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
+                                                {isColumnVisible('recoveryFactor') && (
+                                                    <SortableHeader column="recoveryFactor" label="Recovery" sortColumn={sortColumn} sortDirection={sortDirection} handleSort={handleSort} align="right" />
+                                                )}
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1243,144 +1406,189 @@
                                                 const decStyle = getDecisionStyle(r.decision);
                                                 return (
                                                 <tr key={`${r.trader}-${r.account}`} className={getRowClasses(r)}>
-                                                    <td className="py-3 px-2 font-semibold">{r.trader}</td>
-                                                    <td className="py-3 px-2 text-slate-400">{r.account}</td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.activityInfo ? (
-                                                            <Tooltip content={`Avg Daily P/L Movement: ${r.activityInfo.metrics?.avgAbsDailyPL || '0'} Ft | Active Days: ${r.activityInfo.metrics?.activityRatio || '0%'}`}>
-                                                                <div className="flex flex-col items-center">
-                                                                    <span className={`text-xs font-bold ${r.activityInfo.color || 'text-slate-500'}`}>
-                                                                        {r.activityInfo.status || 'N/A'}
+                                                    {isColumnVisible('trader') && (
+                                                        <td className="py-3 px-2 font-semibold">{r.trader}</td>
+                                                    )}
+                                                    {isColumnVisible('account') && (
+                                                        <td className="py-3 px-2 text-slate-400">{r.account}</td>
+                                                    )}
+
+                                                    {isColumnVisible('activity') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.activityInfo ? (
+                                                                <Tooltip content={`Avg Daily P/L Movement: ${r.activityInfo.metrics?.avgAbsDailyPL || '0'} Ft | Active Days: ${r.activityInfo.metrics?.activityRatio || '0%'}`}>
+                                                                    <div className="flex flex-col items-center">
+                                                                        <span className={`text-xs font-bold ${r.activityInfo.color || 'text-slate-500'}`}>
+                                                                            {r.activityInfo.status || 'N/A'}
+                                                                        </span>
+                                                                        <span className="text-xs text-slate-400">
+                                                                            {r.activityInfo.metrics?.avgAbsDailyPL || '0'} Ft/d
+                                                                        </span>
+                                                                    </div>
+                                                                </Tooltip>
+                                                            ) : (
+                                                                <span className="text-slate-500 text-xs">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('rfGrade') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.rfAssessment ? (
+                                                                <Tooltip content={r.rfAssessment.label || ''}>
+                                                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${r.rfAssessment.color || 'bg-slate-600'}`}>
+                                                                        <span>{r.rfAssessment.icon || '?'}</span>
+                                                                        <span>{r.rfAssessment.grade || 'N/A'}</span>
+                                                                    </div>
+                                                                </Tooltip>
+                                                            ) : (
+                                                                <span className="text-slate-500 text-xs">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('ddRisk') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.ddAssessment ? (
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className={`text-xs ${r.ddAssessment.currentLevel?.color || 'text-slate-500'}`}>
+                                                                        C:{r.ddAssessment.currentLevel?.label || 'N/A'}
                                                                     </span>
-                                                                    <span className="text-xs text-slate-400">
-                                                                        {r.activityInfo.metrics?.avgAbsDailyPL || '0'} Ft/d
+                                                                    <span className={`text-xs px-1 py-0.5 rounded ${
+                                                                        r.ddAssessment.overallRisk === 'SAFE' ? 'bg-green-900/30 text-green-400' :
+                                                                        r.ddAssessment.overallRisk === 'ACCEPTABLE' ? 'bg-yellow-900/30 text-yellow-400' :
+                                                                        r.ddAssessment.overallRisk === 'RISKY' ? 'bg-orange-900/30 text-orange-400' :
+                                                                        r.ddAssessment.overallRisk === 'DANGEROUS' ? 'bg-red-900/30 text-red-400' :
+                                                                        'bg-slate-900/30 text-slate-400'
+                                                                    }`}>
+                                                                        {r.ddAssessment.overallRisk || 'N/A'}
                                                                     </span>
                                                                 </div>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span className="text-slate-500 text-xs">-</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.rfAssessment ? (
-                                                            <Tooltip content={r.rfAssessment.label || ''}>
-                                                                <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${r.rfAssessment.color || 'bg-slate-600'}`}>
-                                                                    <span>{r.rfAssessment.icon || '?'}</span>
-                                                                    <span>{r.rfAssessment.grade || 'N/A'}</span>
+                                                            ) : (
+                                                                <span className="text-slate-500 text-xs">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('entry') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.entrySignal && r.entrySignal.type !== 'NO_ENTRY' ? (
+                                                                <Tooltip content={r.entrySignal.strength || r.entrySignal.type || ''}>
+                                                                    <div className={`px-2 py-1 rounded-lg ${r.entrySignal.color || 'bg-slate-600'} text-white text-xs font-bold`}>
+                                                                        {r.entrySignal.icon || '?'}
+                                                                    </div>
+                                                                </Tooltip>
+                                                            ) : (
+                                                                <span className="text-slate-500 text-xs">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('exit') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.exitSignal ? (
+                                                                <Tooltip content={r.exitSignal.type || ''}>
+                                                                    <div className={`px-2 py-1 rounded-lg ${r.exitSignal.color || 'bg-slate-600'} text-white text-xs font-bold ${
+                                                                        r.exitSignal.pulse ? 'animate-pulse' : ''
+                                                                    }`}>
+                                                                        {r.exitSignal.icon || '?'}
+                                                                    </div>
+                                                                </Tooltip>
+                                                            ) : (
+                                                                <span className="text-green-500 text-xs">✓</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('action') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.actionSignal ? (
+                                                                <Tooltip content={r.actionSignal.type || ''}>
+                                                                    <div className={`px-2 py-1 rounded-lg ${r.actionSignal.color || 'bg-slate-600'} text-white text-xs`}>
+                                                                        {r.actionSignal.icon || '?'}
+                                                                    </div>
+                                                                </Tooltip>
+                                                            ) : (
+                                                                <span className="text-slate-500 text-xs">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('warnings') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            {r.warnings.length > 0 ? (
+                                                                <div className="flex flex-col gap-1">
+                                                                    {r.warnings.map((w, i) => (
+                                                                        <span key={i} className="px-2 py-1 bg-orange-600 rounded text-xs">
+                                                                            ⚠ {w}
+                                                                        </span>
+                                                                    ))}
                                                                 </div>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span className="text-slate-500 text-xs">-</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.ddAssessment ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className={`text-xs ${r.ddAssessment.currentLevel?.color || 'text-slate-500'}`}>
-                                                                    C:{r.ddAssessment.currentLevel?.label || 'N/A'}
-                                                                </span>
-                                                                <span className={`text-xs px-1 py-0.5 rounded ${
-                                                                    r.ddAssessment.overallRisk === 'SAFE' ? 'bg-green-900/30 text-green-400' :
-                                                                    r.ddAssessment.overallRisk === 'ACCEPTABLE' ? 'bg-yellow-900/30 text-yellow-400' :
-                                                                    r.ddAssessment.overallRisk === 'RISKY' ? 'bg-orange-900/30 text-orange-400' :
-                                                                    r.ddAssessment.overallRisk === 'DANGEROUS' ? 'bg-red-900/30 text-red-400' :
-                                                                    'bg-slate-900/30 text-slate-400'
-                                                                }`}>
-                                                                    {r.ddAssessment.overallRisk || 'N/A'}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-slate-500 text-xs">-</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.entrySignal && r.entrySignal.type !== 'NO_ENTRY' ? (
-                                                            <Tooltip content={r.entrySignal.strength || r.entrySignal.type || ''}>
-                                                                <div className={`px-2 py-1 rounded-lg ${r.entrySignal.color || 'bg-slate-600'} text-white text-xs font-bold`}>
-                                                                    {r.entrySignal.icon || '?'}
-                                                                </div>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span className="text-slate-500 text-xs">-</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.exitSignal ? (
-                                                            <Tooltip content={r.exitSignal.type || ''}>
-                                                                <div className={`px-2 py-1 rounded-lg ${r.exitSignal.color || 'bg-slate-600'} text-white text-xs font-bold ${
-                                                                    r.exitSignal.pulse ? 'animate-pulse' : ''
-                                                                }`}>
-                                                                    {r.exitSignal.icon || '?'}
-                                                                </div>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span className="text-green-500 text-xs">✓</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.actionSignal ? (
-                                                            <Tooltip content={r.actionSignal.type || ''}>
-                                                                <div className={`px-2 py-1 rounded-lg ${r.actionSignal.color || 'bg-slate-600'} text-white text-xs`}>
-                                                                    {r.actionSignal.icon || '?'}
-                                                                </div>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            <span className="text-slate-500 text-xs">-</span>
-                                                        )}
-                                                    </td>
-                                                    
-                                                    <td className="text-right py-3 px-2">{r.equity.toFixed(0)}Ft</td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.pl, vals.pl)} font-semibold text-white`}>
-                                                        {r.pl.toFixed(0)}Ft
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.plPercent, vals.plPct)} font-semibold text-white`}>
-                                                        {r.plPercent.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 border-l-4 ${r.currentDailyPL3pt !== null ? `${getHeatmap(r.currentDailyPL3pt, vals.daily)} ${getBorder(r.currentDailyPL3ptDays)}` : 'bg-slate-700'} text-white`}>
-                                                        {r.currentDailyPL3pt !== null ? `${r.currentDailyPL3pt.toFixed(0)}Ft (${r.currentDailyPL3ptDays})` : ''}
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.dailyPLSinceStart, vals.dailyStart)} text-white`}>
-                                                        {r.dailyPLSinceStart.toFixed(0)}Ft
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.estDailyPL, vals.est)} text-white`}>
-                                                        {r.estDailyPL.toFixed(0)}Ft
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.dailyPlPercentSinceStart, vals.dailyPct)} text-white`}>
-                                                        {r.dailyPlPercentSinceStart.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDD(r.currentDrawdown, vals.curr)} font-semibold text-white`}>
-                                                        {r.currentDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getDD(r.maxDrawdown, vals.max)} font-semibold text-white`}>
-                                                        {r.maxDrawdown.toFixed(2)}%
-                                                    </td>
-                                                    <td className={`text-right py-3 px-2 ${getHeatmap(r.recoveryFactor, vals.rec)} font-semibold text-white`}>
-                                                        {r.recoveryFactor.toFixed(2)}
-                                                    </td>
-                                                    <td className="text-center py-3 px-2">
-                                                        {r.warnings.length > 0 ? (
-                                                            <div className="flex flex-col gap-1">
-                                                                {r.warnings.map((w, i) => (
-                                                                    <span key={i} className="px-2 py-1 bg-orange-600 rounded text-xs">
-                                                                        ⚠ {w}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-slate-500">-</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="text-center py-3 px-2">
-                                                        <span className={`px-3 py-1 rounded-lg font-bold text-white ${decStyle.bg}`}>
-                                                            {decStyle.text}
-                                                        </span>
-                                                    </td>
+                                                            ) : (
+                                                                <span className="text-slate-500">-</span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('decision') && (
+                                                        <td className="text-center py-3 px-2">
+                                                            <span className={`px-3 py-1 rounded-lg font-bold text-white ${decStyle.bg}`}>
+                                                                {decStyle.text}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {isColumnVisible('equity') && (
+                                                        <td className="text-right py-3 px-2">{r.equity.toFixed(0)}Ft</td>
+                                                    )}
+                                                    {isColumnVisible('netInvested') && (
+                                                        <td className="text-right py-3 px-2">{r.netInvested.toFixed(0)}Ft</td>
+                                                    )}
+                                                    {isColumnVisible('pl') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.pl, vals.pl)} font-semibold text-white`}>
+                                                            {r.pl.toFixed(0)}Ft
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('plPercent') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.plPercent, vals.plPct)} font-semibold text-white`}>
+                                                            {r.plPercent.toFixed(2)}%
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('currentDailyPL3pt') && (
+                                                        <td className={`text-right py-3 px-2 border-l-4 ${r.currentDailyPL3pt !== null ? `${getHeatmap(r.currentDailyPL3pt, vals.daily)} ${getBorder(r.currentDailyPL3ptDays)}` : 'bg-slate-700'} text-white`}>
+                                                            {r.currentDailyPL3pt !== null ? `${r.currentDailyPL3pt.toFixed(0)}Ft (${r.currentDailyPL3ptDays})` : ''}
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('dailyPLSinceStart') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.dailyPLSinceStart, vals.dailyStart)} text-white`}>
+                                                            {r.dailyPLSinceStart.toFixed(0)}Ft
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('estDailyPL') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.estDailyPL, vals.est)} text-white`}>
+                                                            {r.estDailyPL.toFixed(0)}Ft
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('dailyPlPercentSinceStart') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.dailyPlPercentSinceStart, vals.dailyPct)} text-white`}>
+                                                            {r.dailyPlPercentSinceStart.toFixed(2)}%
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('currentDrawdown') && (
+                                                        <td className={`text-right py-3 px-2 ${getDD(r.currentDrawdown, vals.curr)} font-semibold text-white`}>
+                                                            {r.currentDrawdown.toFixed(2)}%
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('maxDrawdown') && (
+                                                        <td className={`text-right py-3 px-2 ${getDD(r.maxDrawdown, vals.max)} font-semibold text-white`}>
+                                                            {r.maxDrawdown.toFixed(2)}%
+                                                        </td>
+                                                    )}
+                                                    {isColumnVisible('recoveryFactor') && (
+                                                        <td className={`text-right py-3 px-2 ${getHeatmap(r.recoveryFactor, vals.rec)} font-semibold text-white`}>
+                                                            {r.recoveryFactor.toFixed(2)}
+                                                        </td>
+                                                    )}
                                                 </tr>
                                                 );
                                             })}
