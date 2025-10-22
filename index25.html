@@ -2255,8 +2255,9 @@ const logDecisionToHistory = async (row) => {
                             const dailyChange = naturalChange / daysSince;
                             
                             const zScore = stdDev > 0 ? Math.abs((dailyChange - mean) / stdDev) : 0;
+                            const deviationPercent = prevSnap.equity > 0 ? Math.abs((snap.equity - (prevSnap.equity + netFlow)) / prevSnap.equity) * 100 : 0;
                             
-                            if (zScore > 3.5 && stdDev > 0) {
+                            if (zScore > 4.0 && stdDev > 0 && deviationPercent > 20) {
                                 const expectedEquity = prevSnap.equity + netFlow + (mean * daysSince);
                                 
                                 issues.snapshots.push({
