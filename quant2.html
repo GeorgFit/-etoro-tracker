@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eToro copy-trading portfólió quant terminál v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            background-color: #0b1120;
+            color: #f1f5f9;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .quant-card {
+            background: linear-gradient(180deg, #131c31 0%, #0f172a 100%);
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        .quant-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .quant-scroll::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        .quant-scroll::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        .stage-pill {
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: inline-block;
+        }
+        input[type="range"] {
+            accent-color: #38bdf8;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+
+    <!-- Felso fejlec -->
+    <header class="quant-card px-5 py-3.5 mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-lg">
+                Q2
+            </div>
+            <div>
+                <div class="flex items-center gap-2.5">
+                    <h1 class="text-base md:text-lg font-bold tracking-tight text-white">eToro copy-trading portfólió quant terminál v2.0</h1>
+                    <span id="conn-badge" class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Szinkronizálás...
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400">2. fázis: interaktív újrasúlyozó szimulátor, csúszó stop-loss (csl) kalkulátor és döntési napló</p>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Szamla szuro -->
+            <div class="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-1 text-xs">
+                <button id="acc-virtual" class="px-3 py-1 rounded-md font-bold bg-blue-600 text-white transition">Virtual</button>
+                <button id="acc-real" class="px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition">Real</button>
+                <button id="acc-all" class="px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition">Mind</button>
+            </div>
+
+            <!-- Deviza bazis kapcsolo -->
+            <button id="currency-toggle" class="flex items-center gap-2.5 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer">
+                <span id="curr-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <span id="curr-label" class="text-emerald-300">HUF nézet (Forint)</span>
+                <span class="text-slate-400 text-[11px]">⇄ USD alap</span>
+            </button>
+
+            <button id="toggle-journal-btn" class="bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/40 text-violet-300 px-3.5 py-1.5 rounded-lg text-xs font-bold transition">
+                📋 Döntési napló (<span id="journal-count-badge">0</span>)
+            </button>
+
+            <button id="refresh-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition">
+                Adatok frissítése
+            </button>
+            <button id="export-xlsx-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition">
+                Export XLSX
+            </button>
+        </div>
+    </header>
+
+    <!-- Dontesi es vegrehajtasi naplo (lenyithato panel) -->
+    <section id="journal-panel" class="quant-card p-5 mb-5 hidden border-violet-500/40">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-violet-300">📋 Döntési és végrehajtási napló (helyi tároló)</h2>
+                <p class="text-xs text-slate-400">A rögzített tőkeátcsoportosítások, stop-loss frissítések és előléptetések követése a Lana adatbázis módosítása nélkül</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="export-journal-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition">
+                    Napló exportálása (XLSX)
+                </button>
+                <button id="clear-journal-btn" class="bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 text-rose-300 px-3 py-1.5 rounded-lg text-xs font-bold transition">
+                    Teljes napló törlése
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto quant-scroll max-h-64">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 uppercase text-[11px]">
+                        <th class="py-2 px-2">Dátum</th>
+                        <th class="py-2 px-2">Trader</th>
+                        <th class="py-2 px-2">Számla</th>
+                        <th class="py-2 px-2">Művelet</th>
+                        <th class="py-2 px-2 text-right">Érintett összeg / cél</th>
+                        <th class="py-2 px-2">Indoklás / megjegyzés</th>
+                        <th class="py-2 px-2 text-center">Állapot</th>
+                        <th class="py-2 px-2 text-right">Törlés</th>
+                    </tr>
+                </thead>
+                <tbody id="journal-tbody" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 1. Szekcio: 4 KPI kartya -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        <div class="quant-card p-4 flex items-center justify-between">
+            <div>
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Teljes portfólió érték (Equity)</div>
+                <div id="kpi-equity" class="text-2xl font-extrabold text-white mt-1">0 Ft</div>
+                <div id="kpi-invested" class="text-xs text-slate-400 mt-1">Befektetve: 0 Ft</div>
+            </div>
+            <div id="kpi-sparkline" class="w-24 h-12"></div>
+        </div>
+
+        <div class="quant-card p-4">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Nettó profit és súlyozott hozam</div>
+            <div id="kpi-profit" class="text-2xl font-extrabold text-emerald-400 mt-1">+0 Ft</div>
+            <div id="kpi-profit-sub" class="text-xs text-slate-400 mt-1">Pozícióátlag: 0.00% | Nyerő arány: 0%</div>
+        </div>
+
+        <div class="quant-card p-4">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Védett profit potenciál (Trailing CSL)</div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <span id="kpi-locked-profit" class="text-2xl font-extrabold text-sky-400">+0 Ft</span>
+                <span id="kpi-locked-count" class="ml-auto px-2 py-0.5 text-[11px] font-bold rounded bg-sky-500/20 text-sky-300">0 bajnok</span>
+            </div>
+            <div id="kpi-benchmark" class="text-xs text-slate-400 mt-1">Portfólió medián hozam (Benchmark): +0.00%</div>
+        </div>
+
+        <div class="quant-card p-4">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Szimulált átcsoportosítási hatás</div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <span id="kpi-sim-boost" class="text-2xl font-extrabold text-emerald-400">+0.00%</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-800 text-slate-300 border border-slate-700">Várható Alpha</span>
+            </div>
+            <div id="kpi-concentration" class="text-xs text-slate-400 mt-1">Max pozíciósúly: 0.0% (Plafon: 8.0%)</div>
+        </div>
+    </section>
+
+    <!-- 2. Szekcio: Inkubator Tolcser (Bal) + Interaktiv Ujrasulyozo Szimulator (Jobb) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
+        <!-- Bal panel: Inkubator tolcser -->
+        <div class="quant-card p-5 lg:col-span-5 flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200">Inkubátor -> éles számla előléptetési tölcsér</h2>
+                        <p class="text-xs text-slate-400">Kattints bármelyik szintre a táblázat szűréséhez</p>
+                    </div>
+                    <button id="reset-stage-filter" class="text-xs text-sky-400 hover:text-sky-300 font-bold hidden">
+                        Szűrő törlése (Összes)
+                    </button>
+                </div>
+
+                <!-- 5 kategoria gomb -->
+                <div id="funnel-stages-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4"></div>
+
+                <!-- Top eloleptetesi jeloltek listaja -->
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Kiemelt előléptetési jelöltek (kattints a sorra a CSL adatlapért)</div>
+                <div id="funnel-candidates-list" class="space-y-2 max-h-64 overflow-y-auto quant-scroll pr-1"></div>
+            </div>
+        </div>
+
+        <!-- Jobb panel: Interaktiv Tokeatcsoportositasi Szimulator -->
+        <div class="quant-card p-5 lg:col-span-7 flex flex-col justify-between">
+            <div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200">Interaktív tőkeátcsoportosítási szimulátor</h2>
+                        <p class="text-xs text-slate-400">Állítsd a paramétereket a csúszkákkal, vagy kapcsold ki/be az egyes tradereket a ☑️ gombbal</p>
+                    </div>
+                    <div id="rebalance-summary-badge" class="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/30 text-xs font-bold text-blue-300">
+                        Felszabadítható: 0 Ft
+                    </div>
+                </div>
+
+                <!-- Interaktiv csuszkak (3 parameter) -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-900/90 border border-slate-800 rounded-lg p-3 mb-3.5 text-xs">
+                    <div>
+                        <div class="flex justify-between text-slate-300 font-semibold mb-1">
+                            <span>Max. pozíciósúly plafon:</span>
+                            <span id="lbl-cap-pct" class="text-sky-400 font-bold">8.0%</span>
+                        </div>
+                        <input id="slider-cap-pct" type="range" min="3" max="20" step="0.5" value="8" class="w-full cursor-pointer">
+                        <div class="text-[10px] text-slate-500 mt-0.5">Ennél nagyobb veszteséges súlyt visszavág</div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-slate-300 font-semibold mb-1">
+                            <span>Lezárási küszöb (Cut):</span>
+                            <span id="lbl-cut-pct" class="text-rose-400 font-bold">-10.0%</span>
+                        </div>
+                        <input id="slider-cut-pct" type="range" min="-25" max="-3" step="1" value="-10" class="w-full cursor-pointer">
+                        <div class="text-[10px] text-slate-500 mt-0.5">30+ napos pozíciók lezárási P/L határa</div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-slate-300 font-semibold mb-1">
+                            <span>Cél bajnok min. Score:</span>
+                            <span id="lbl-champ-score" class="text-emerald-400 font-bold">82 pont</span>
+                        </div>
+                        <input id="slider-champ-score" type="range" min="65" max="95" step="1" value="82" class="w-full cursor-pointer">
+                        <div class="text-[10px] text-slate-500 mt-0.5">Csak e feletti bajnokok kapnak tőkét</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-11 gap-3 items-center">
+                    <!-- Bal lista: SELL / TRIM -->
+                    <div class="md:col-span-5">
+                        <div class="flex items-center justify-between text-[11px] font-bold uppercase text-rose-400 mb-1.5">
+                            <span>Lezárás / visszavágás (Forrás)</span>
+                            <span id="sell-selected-count" class="text-slate-400">0 kijelölve</span>
+                        </div>
+                        <div id="rebalance-sell-list" class="space-y-1.5 max-h-52 overflow-y-auto quant-scroll pr-1"></div>
+                    </div>
+
+                    <!-- Kozep: SVG osszekoto nyilak -->
+                    <div class="hidden md:flex md:col-span-1 flex-col items-center justify-center py-2">
+                        <svg viewBox="0 0 40 160" class="w-10 h-36">
+                            <path d="M 2 25 C 20 25, 20 80, 38 80" stroke="#f43f5e" stroke-width="2" fill="none" stroke-opacity="0.6"/>
+                            <path d="M 2 80 C 20 80, 20 40, 38 40" stroke="#38bdf8" stroke-width="2" fill="none" stroke-opacity="0.6"/>
+                            <path d="M 2 135 C 20 135, 20 120, 38 120" stroke="#10b981" stroke-width="2" fill="none" stroke-opacity="0.6"/>
+                            <circle cx="20" cy="80" r="4" fill="#38bdf8"/>
+                        </svg>
+                    </div>
+
+                    <!-- Jobb lista: BUY / SCALE-IN -->
+                    <div class="md:col-span-5">
+                        <div class="flex items-center justify-between text-[11px] font-bold uppercase text-emerald-400 mb-1.5">
+                            <span>Tőkeemelés (Cél bajnokok)</span>
+                            <span id="buy-selected-count" class="text-slate-400">0 kijelölve</span>
+                        </div>
+                        <div id="rebalance-buy-list" class="space-y-1.5 max-h-52 overflow-y-auto quant-scroll pr-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                <span id="rebalance-footer-text">Várható portfólió-hatás: +0 Ft évesített többlethozam</span>
+                <div class="flex items-center gap-2">
+                    <button id="log-rebalance-btn" class="bg-violet-600 hover:bg-violet-500 text-white font-bold px-3.5 py-1.5 rounded-lg transition">
+                        📋 Kijelölt terv rögzítése a naplóba
+                    </button>
+                    <button id="export-plan-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3.5 py-1.5 rounded-lg transition">
+                        Terv másolása vágólapra
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. Szekcio: Kvantitativ Trader Tablazat (CSL es profitvedelmi oszloppal) -->
+    <section class="quant-card p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200">Kvantitatív trader teljesítményadatok és csúszó stop-loss (csl) tanácsadó</h2>
+                <p id="table-subtitle" class="text-xs text-slate-400">Kattints bármelyik trader sorára a részletes CSL kalkulátor és döntési ablak megnyitásához</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2.5">
+                <input id="search-input" type="text" placeholder="Trader keresése..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 w-48">
+                <select id="sort-select" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-semibold">
+                    <option value="quantScore_desc">Rendezés: Quant Score (Legjobb elöl)</option>
+                    <option value="lockedPct_desc">Rendezés: Védett profit (CSL %) szerint</option>
+                    <option value="alpha_desc">Rendezés: Relatív Alpha (α) szerint</option>
+                    <option value="plPct_desc">Rendezés: Hozam (P/L %) szerint</option>
+                    <option value="trueCurrDD_desc">Rendezés: Legnagyobb visszaesés (DD) elöl</option>
+                    <option value="equity_desc">Rendezés: Tőkeméret (Equity) szerint</option>
+                    <option value="trader_asc">Rendezés: Név szerint (A-Z)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto quant-scroll">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 uppercase text-[11px]">
+                        <th class="py-3 px-2.5">Trader</th>
+                        <th class="py-3 px-2.5">Szint (Stage)</th>
+                        <th class="py-3 px-2.5 text-right">Befektetve (NetInv)</th>
+                        <th class="py-3 px-2.5 text-right">Aktuális Equity</th>
+                        <th class="py-3 px-2.5 text-right">Súly (%)</th>
+                        <th class="py-3 px-2.5 text-center">Hozamgörbe</th>
+                        <th class="py-3 px-2.5 text-right">Összhozam (P/L %)</th>
+                        <th class="py-3 px-2.5 text-right">Relatív Alpha (α)</th>
+                        <th class="py-3 px-2.5 w-40">Valódi Drawdown (Akt / Max)</th>
+                        <th class="py-3 px-2.5">Javasolt csúszó CSL (Védett profit)</th>
+                        <th class="py-3 px-2.5 text-center">Quant Score</th>
+                        <th class="py-3 px-2.5 text-center">Risk</th>
+                    </tr>
+                </thead>
+                <tbody id="quant-tbody" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Modal: Trader Kvantitativ Adatlap es Interaktiv Trailing CSL Kalkulator -->
+    <div id="trader-modal-overlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="quant-card max-w-2xl w-full p-6 border-slate-700 shadow-2xl">
+            <div class="flex items-start justify-between border-b border-slate-800 pb-3.5 mb-4">
+                <div>
+                    <div class="flex items-center gap-2.5">
+                        <h3 id="modal-trader-name" class="text-lg font-extrabold text-white">Trader</h3>
+                        <span id="modal-stage-pill" class="stage-pill">Stage</span>
+                        <span id="modal-score-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-xs font-bold">Score: 0</span>
+                    </div>
+                    <p id="modal-trader-sub" class="text-xs text-slate-400 mt-1">Kezdés: - | Futamidő: - nap</p>
+                </div>
+                <button id="modal-close-btn" class="text-slate-400 hover:text-white text-2xl font-bold leading-none">×</button>
+            </div>
+
+            <!-- 4 mutato doboz a modalban -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-xs">
+                <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+                    <div class="text-slate-400">Befektetett tőke</div>
+                    <div id="modal-netinv" class="text-base font-bold text-white mt-0.5">0 Ft</div>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+                    <div class="text-slate-400">Aktuális Equity</div>
+                    <div id="modal-equity" class="text-base font-bold text-white mt-0.5">0 Ft</div>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+                    <div class="text-slate-400">Összhozam (Relatív α)</div>
+                    <div id="modal-plpct" class="text-base font-bold text-emerald-400 mt-0.5">+0.0%</div>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+                    <div class="text-slate-400">Valódi DD (Akt / Max)</div>
+                    <div id="modal-dd" class="text-base font-bold text-slate-200 mt-0.5">0.0% / 0.0%</div>
+                </div>
+            </div>
+
+            <!-- Nagy SVG hozamgorbe CSL vonallal -->
+            <div class="bg-slate-900/70 border border-slate-800 rounded-lg p-3 mb-4">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 mb-2">
+                    <span>Egyenleggörbe (zöld/piros), alapbefektetés (szürke szaggatott) és csúszó CSL küszöb (sárga)</span>
+                    <span id="modal-chart-label" class="font-bold text-amber-300">CSL: 0 Ft</span>
+                </div>
+                <div id="modal-chart-container" class="w-full h-36 flex items-center justify-center"></div>
+            </div>
+
+            <!-- Interaktiv Trailing CSL kalkulator -->
+            <div class="bg-slate-900/90 border border-sky-500/30 rounded-lg p-4 mb-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-sky-300">🛡️ Interaktív csúszó stop-loss (Trailing CSL) kalkulátor</span>
+                    <span id="modal-csl-recommendation" class="text-xs font-bold text-emerald-400">Javaslat</span>
+                </div>
+
+                <div class="mb-3">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300">Megengedett visszahúzódási puffer az aktuális csúcstól:</span>
+                        <span id="modal-buffer-label" class="font-bold text-sky-400">10.0%</span>
+                    </div>
+                    <input id="modal-buffer-slider" type="range" min="4" max="25" step="0.5" value="10" class="w-full cursor-pointer">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-slate-800">
+                    <div>
+                        <div class="text-slate-400">Beállítandó eToro CSL érték:</div>
+                        <div id="modal-csl-value" class="text-sm font-extrabold text-amber-300 mt-0.5">0 Ft</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-400">Bebiztosított (garantált) profit:</div>
+                        <div id="modal-locked-profit" class="text-sm font-extrabold text-emerald-400 mt-0.5">+0 Ft (+0.0%)</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-400">Javasolt részleges kivét (Skim 25%):</div>
+                        <div id="modal-skim-value" class="text-sm font-extrabold text-violet-300 mt-0.5">0 Ft</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gyors dontes rogzitese a naploba -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                <span class="text-xs text-slate-400">Döntés mentése a végrehajtási naplóba:</span>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <button id="modal-btn-csl" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg transition">
+                        🛡️ CSL frissítés naplózása
+                    </button>
+                    <button id="modal-btn-skim" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg transition">
+                        💰 Profit kivét (Skim) naplózása
+                    </button>
+                    <button id="modal-btn-promote" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg transition">
+                        🚀 Előléptetés (Real) naplózása
+                    </button>
+                    <button id="modal-btn-close" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded-lg transition">
+                        🛑 Lezárás (SELL) naplózása
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        const FIREBASE_PROJECT = "etoro-tracker";
+        const BASE_URL = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT + "/databases/(default)/documents";
+        const BASE_HUF_PER_USD = 323.307;
+        const JOURNAL_STORAGE_KEY = "etoro_quant_execution_journal_v2";
+
+        let rawSnapshots = [];
+        let rawTransactions = [];
+        let rawStatuses = {};
+        let processedTraders = [];
+
+        let selectedAccount = "Virtual";
+        let currencyMode = "HUF";
+        let selectedStageFilter = "ALL";
+        let searchQuery = "";
+        let sortMode = "quantScore_desc";
+
+        // Szimulator parameterek
+        let simMaxCapPct = 8.0;
+        let simCutPct = -10.0;
+        let simMinChampScore = 82;
+        let excludedSellTraders = new Set();
+        let excludedBuyTraders = new Set();
+        let currentRebalancePlan = { sellList: [], buyList: [], totalFreedHuf: 0, expectedAnnualBoostHuf: 0 };
+
+        // Aktiv trader a modalban
+        let activeModalTrader = null;
+
+        function parseDateStr(str) {
+            if (!str) return 0;
+            const clean = str.trim().replace(/\.$/, '').replace(/\./g, '-');
+            const t = Date.parse(clean);
+            return isNaN(t) ? 0 : t;
+        }
+
+        function daysBetweenDates(d1Str, d2Str) {
+            const t1 = parseDateStr(d1Str);
+            const t2 = parseDateStr(d2Str);
+            if (!t1 || !t2) return 1;
+            return Math.max(1, Math.round(Math.abs(t1 - t2) / (1000 * 60 * 60 * 24)));
+        }
+
+        function getTodayStr() {
+            return new Date().toISOString().split('T')[0].replace(/-/g, '.');
+        }
+
+        function formatMoney(amountHuf, impliedFx) {
+            if (currencyMode === "USD") {
+                const usdVal = amountHuf / (impliedFx || BASE_HUF_PER_USD);
+                const sign = usdVal < 0 ? "-" : "";
+                return sign + "$" + Math.abs(usdVal).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            }
+            return Math.round(amountHuf).toLocaleString('hu-HU') + " Ft";
+        }
+
+        // Dontesi naplo muveletek (localStorage)
+        function getJournalEntries() {
+            try {
+                const raw = localStorage.getItem(JOURNAL_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveJournalEntries(entries) {
+            try {
+                localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(entries));
+                renderJournalTable();
+            } catch (e) {
+                console.warn("Naplo mentesi hiba:", e);
+            }
+        }
+
+        function addJournalEntry(trader, account, actionType, amountInfo, reasonText) {
+            const entries = getJournalEntries();
+            entries.unshift({
+                id: "j_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+                date: getTodayStr(),
+                trader: trader,
+                account: account,
+                action: actionType,
+                amountInfo: amountInfo,
+                reason: reasonText,
+                status: "TERVEZETT"
+            });
+            saveJournalEntries(entries);
+        }
+
+        function renderJournalTable() {
+            const entries = getJournalEntries();
+            document.getElementById("journal-count-badge").innerText = entries.length;
+            const tbody = document.getElementById("journal-tbody");
+            tbody.innerHTML = "";
+
+            if (entries.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-500">Még nincs rögzített döntés a naplóban.</td></tr>`;
+                return;
+            }
+
+            entries.forEach(item => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-800/40";
+                const isDone = item.status === "VÉGREHAJTVA";
+                tr.innerHTML = `
+                    <td class="py-2 px-2 text-slate-400">${item.date}</td>
+                    <td class="py-2 px-2 font-bold text-white">${item.trader}</td>
+                    <td class="py-2 px-2 text-slate-300">${item.account}</td>
+                    <td class="py-2 px-2 font-bold text-sky-300">${item.action}</td>
+                    <td class="py-2 px-2 text-right font-bold text-emerald-300">${item.amountInfo}</td>
+                    <td class="py-2 px-2 text-slate-400">${item.reason}</td>
+                    <td class="py-2 px-2 text-center">
+                        <button class="j-status-btn px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${isDone ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}">
+                            ${item.status}
+                        </button>
+                    </td>
+                    <td class="py-2 px-2 text-right">
+                        <button class="j-del-btn text-rose-400 hover:text-rose-300 font-bold px-1.5">×</button>
+                    </td>
+                `;
+
+                tr.querySelector(".j-status-btn").addEventListener("click", () => {
+                    const all = getJournalEntries();
+                    const target = all.find(x => x.id === item.id);
+                    if (target) {
+                        target.status = target.status === "TERVEZETT" ? "VÉGREHAJTVA" : "TERVEZETT";
+                        saveJournalEntries(all);
+                    }
+                });
+
+                tr.querySelector(".j-del-btn").addEventListener("click", () => {
+                    const filtered = getJournalEntries().filter(x => x.id !== item.id);
+                    saveJournalEntries(filtered);
+                });
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function runFirestoreQuery(structuredQuery) {
+            const response = await fetch(BASE_URL + ":runQuery", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ structuredQuery: structuredQuery })
+            });
+            if (!response.ok) {
+                throw new Error("Firestore HTTP hiba: " + response.status);
+            }
+            return await response.json();
+        }
+
+        async function loadFirebaseData() {
+            const badge = document.getElementById("conn-badge");
+            badge.innerText = "Szinkronizálás...";
+            badge.className = "px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30";
+
+            try {
+                const statusRes = await runFirestoreQuery({
+                    from: [{ collectionId: "trader_status" }],
+                    limit: 600
+                });
+                rawStatuses = {};
+                if (Array.isArray(statusRes)) {
+                    statusRes.forEach(item => {
+                        if (item.document) {
+                            if (item.document.fields) {
+                                const f = item.document.fields;
+                                const tr = f.trader ? f.trader.stringValue : "";
+                                const ac = f.account ? f.account.stringValue : "Virtual";
+                                const st = f.status ? f.status.stringValue : "ACTIVE";
+                                if (tr) rawStatuses[tr + "_" + ac] = st;
+                            }
+                        }
+                    });
+                }
+
+                const txRes = await runFirestoreQuery({
+                    from: [{ collectionId: "transactions" }],
+                    limit: 3500
+                });
+                rawTransactions = [];
+                if (Array.isArray(txRes)) {
+                    txRes.forEach(item => {
+                        if (item.document) {
+                            if (item.document.fields) {
+                                const f = item.document.fields;
+                                const tr = f.trader ? f.trader.stringValue : "";
+                                const ac = f.account ? f.account.stringValue : "Virtual";
+                                const tp = f.type ? f.type.stringValue : "DEPOSIT";
+                                const am = f.amount ? Number(f.amount.doubleValue || f.amount.integerValue || 0) : 0;
+                                const dt = f.date ? f.date.stringValue : "";
+                                const ts = f.timestamp ? f.timestamp.stringValue : "";
+                                if (tr) {
+                                    if (tr !== "__ARCHIVED__") {
+                                        if (am > 0) {
+                                            rawTransactions.push({
+                                                trader: tr,
+                                                account: ac,
+                                                type: tp,
+                                                amount: am,
+                                                date: dt,
+                                                timestamp: ts
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                const snapRes = await runFirestoreQuery({
+                    from: [{ collectionId: "snapshots" }],
+                    orderBy: [{ field: { fieldPath: "timestamp" }, direction: "DESCENDING" }],
+                    limit: 4000
+                });
+                rawSnapshots = [];
+                if (Array.isArray(snapRes)) {
+                    snapRes.forEach(item => {
+                        if (item.document) {
+                            if (item.document.fields) {
+                                const f = item.document.fields;
+                                const tr = f.trader ? f.trader.stringValue : "";
+                                const ac = f.account ? f.account.stringValue : "Virtual";
+                                const eq = f.equity ? Number(f.equity.doubleValue || f.equity.integerValue || 0) : 0;
+                                const rs = f.riskScore ? Number(f.riskScore.doubleValue || f.riskScore.integerValue || 5) : 5;
+                                const dt = f.date ? f.date.stringValue : "";
+                                const liveInv = f.liveInvestedHuf ? Number(f.liveInvestedHuf.doubleValue || f.liveInvestedHuf.integerValue || 0) : 0;
+                                const uInv = f.usdInvested ? Number(f.usdInvested.doubleValue || f.usdInvested.integerValue || 0) : 0;
+                                const uEq = f.usdEquity ? Number(f.usdEquity.doubleValue || f.usdEquity.integerValue || 0) : 0;
+                                const uPct = f.usdPlPct ? Number(f.usdPlPct.doubleValue || f.usdPlPct.integerValue || 0) : null;
+                                const fx = f.fxRate ? Number(f.fxRate.doubleValue || f.fxRate.integerValue || 0) : 0;
+                                if (tr) {
+                                    rawSnapshots.push({
+                                        trader: tr,
+                                        account: ac,
+                                        equity: eq,
+                                        liveInvestedHuf: liveInv,
+                                        usdInvested: uInv,
+                                        usdEquity: uEq,
+                                        usdPlPct: uPct,
+                                        fxRate: fx,
+                                        riskScore: rs,
+                                        date: dt
+                                    });
+                                }
+                            }
+                        }
+                    });
+                }
+
+                badge.innerText = "Élő Firebase kapcsolat (" + rawSnapshots.length + " snapshot)";
+                badge.className = "px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+
+                recalculateQuantModel();
+            } catch (err) {
+                console.error("Firebase olvasasi hiba:", err);
+                badge.innerText = "Kapcsolódási hiba";
+                badge.className = "px-2 py-0.5 text-[11px] font-bold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30";
+            }
+        }
+
+        function buildSparklineSvg(equities, netInv, width, height) {
+            if (!equities || equities.length === 0) return "";
+            const pts = equities.length === 1 ? [netInv, equities[0]] : equities;
+            const minVal = Math.min(...pts, netInv * 0.98);
+            const maxVal = Math.max(...pts, netInv * 1.02);
+            const range = Math.max(1, maxVal - minVal);
+
+            const coords = pts.map((v, idx) => {
+                const x = (idx / Math.max(1, pts.length - 1)) * (width - 6) + 3;
+                const y = height - 4 - ((v - minVal) / range) * (height - 8);
+                return x.toFixed(1) + "," + y.toFixed(1);
+            });
+
+            const lastVal = pts[pts.length - 1];
+            const strokeColor = lastVal >= netInv ? "#10b981" : "#f43f5e";
+            return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="overflow-visible">
+                <polyline fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${coords.join(' ')}" />
+            </svg>`;
+        }
+
+        function buildModalChartSvg(equities, netInv, cslValue, width, height) {
+            const pts = (!equities || equities.length <= 1) ? [netInv, equities ? equities[0] : netInv] : equities;
+            const minVal = Math.min(...pts, netInv * 0.95, cslValue * 0.96);
+            const maxVal = Math.max(...pts, netInv * 1.05, cslValue * 1.04);
+            const range = Math.max(1, maxVal - minVal);
+
+            const toY = (val) => height - 10 - ((val - minVal) / range) * (height - 20);
+            const coords = pts.map((v, idx) => {
+                const x = (idx / Math.max(1, pts.length - 1)) * (width - 20) + 10;
+                const y = toY(v);
+                return x.toFixed(1) + "," + y.toFixed(1);
+            });
+
+            const netInvY = toY(netInv).toFixed(1);
+            const cslY = toY(cslValue).toFixed(1);
+            const lastVal = pts[pts.length - 1];
+            const strokeColor = lastVal >= netInv ? "#10b981" : "#f43f5e";
+
+            return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" class="overflow-visible">
+                <line x1="10" y1="${netInvY}" x2="${width - 10}" y2="${netInvY}" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4 4" />
+                <line x1="10" y1="${cslY}" x2="${width - 10}" y2="${cslY}" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 3" />
+                <polyline fill="none" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${coords.join(' ')}" />
+            </svg>`;
+        }
+
+        function recalculateQuantModel() {
+            const byTraderKey = {};
+            const todayStr = getTodayStr();
+            const oneYearAgoIso = new Date(Date.now() - 360 * 24 * 60 * 60 * 1000).toISOString();
+
+            rawSnapshots.forEach(s => {
+                if (selectedAccount !== "ALL") {
+                    if (s.account !== selectedAccount) return;
+                }
+                if (s.trader === "META" || s.trader === "MSFT") return;
+
+                const k = s.trader + "_" + s.account;
+                if (!byTraderKey[k]) {
+                    byTraderKey[k] = {
+                        trader: s.trader,
+                        account: s.account,
+                        snapsByDate: {}
+                    };
+                }
+                if (!byTraderKey[k].snapsByDate[s.date]) {
+                    byTraderKey[k].snapsByDate[s.date] = s;
+                }
+            });
+
+            const tempTraders = [];
+
+            Object.keys(byTraderKey).forEach(k => {
+                const item = byTraderKey[k];
+                const status = rawStatuses[k] || "ACTIVE";
+                if (status !== "ACTIVE") return;
+
+                const snaps = Object.values(item.snapsByDate).sort((a, b) => parseDateStr(a.date) - parseDateStr(b.date));
+                if (snaps.length === 0) return;
+
+                const txs = rawTransactions.filter(t => {
+                    if (t.trader !== item.trader) return false;
+                    if (t.account !== item.account) return false;
+                    if (t.timestamp) {
+                        if (t.timestamp < oneYearAgoIso) return false;
+                    }
+                    return true;
+                });
+
+                let netInv = 0;
+                let earliestDate = snaps[0].date;
+                txs.forEach(t => {
+                    if (t.type === "DEPOSIT") {
+                        netInv += t.amount;
+                        if (t.date) {
+                            if (parseDateStr(t.date) < parseDateStr(earliestDate)) {
+                                earliestDate = t.date;
+                            }
+                        }
+                    } else if (t.type === "WITHDRAWAL") {
+                        netInv -= t.amount;
+                    }
+                });
+
+                if (netInv <= 0) netInv = 64661;
+                if (netInv < 20000) return;
+
+                const latestSnap = snaps[snaps.length - 1];
+                const isUsdMode = currencyMode === "USD";
+                let effectiveInv = netInv;
+                if (isUsdMode) {
+                    if (latestSnap.liveInvestedHuf > 0) {
+                        effectiveInv = latestSnap.liveInvestedHuf;
+                    }
+                }
+                const equity = latestSnap.equity;
+                const pl = equity - effectiveInv;
+                let plPct = (pl / effectiveInv) * 100;
+                if (isUsdMode) {
+                    if (latestSnap.usdPlPct !== null) {
+                        if (latestSnap.usdPlPct !== undefined) {
+                            plPct = latestSnap.usdPlPct;
+                        }
+                    }
+                }
+                const daysSinceStart = daysBetweenDates(todayStr, earliestDate) + 1;
+
+                let runningPeak = netInv;
+                let maxDD = 0;
+                const equitySeries = [];
+
+                snaps.forEach(s => {
+                    equitySeries.push(s.equity);
+                    if (s.equity > runningPeak) runningPeak = s.equity;
+                    const dd = runningPeak > 0 ? ((runningPeak - s.equity) / runningPeak) * 100 : 0;
+                    if (dd > maxDD) maxDD = dd;
+                });
+
+                const trueCurrDD = runningPeak > 0 ? ((runningPeak - equity) / runningPeak) * 100 : 0;
+                const trueMaxDD = Math.max(maxDD, trueCurrDD);
+
+                let recentDailyPl = 0;
+                if (snaps.length >= 2) {
+                    const prevSnap = snaps[snaps.length - 2];
+                    const dDiff = Math.max(1, daysBetweenDates(latestSnap.date, prevSnap.date));
+                    recentDailyPl = (latestSnap.equity - prevSnap.equity) / dDiff;
+                }
+
+                // Automatikus volatilitashoz igazitott Trailing CSL szamitas
+                const recBufferPct = Number(Math.max(8.0, Math.min(15.0, trueMaxDD * 1.8 + 7.0)).toFixed(1));
+                const cslTriggerEquity = Math.round(equity * (1 - recBufferPct / 100));
+                const lockedProfitHuf = cslTriggerEquity - netInv;
+                const lockedProfitPct = (lockedProfitHuf / netInv) * 100;
+
+                tempTraders.push({
+                    trader: item.trader,
+                    account: item.account,
+                    latestDate: latestSnap.date,
+                    earliestDate: earliestDate,
+                    daysSinceStart: daysSinceStart,
+                    snapshotCount: snaps.length,
+                    netInv: netInv,
+                    equity: equity,
+                    pl: pl,
+                    plPct: plPct,
+                    trueCurrDD: trueCurrDD,
+                    trueMaxDD: trueMaxDD,
+                    recentDailyPl: recentDailyPl,
+                    riskScore: latestSnap.riskScore || 5,
+                    equitySeries: equitySeries,
+                    recBufferPct: recBufferPct,
+                    cslTriggerEquity: cslTriggerEquity,
+                    lockedProfitHuf: lockedProfitHuf,
+                    lockedProfitPct: lockedProfitPct
+                });
+            });
+
+            const sortedPcts = tempTraders.map(t => t.plPct).sort((a, b) => a - b);
+            const medianPlPct = sortedPcts.length > 0 ? sortedPcts[Math.floor(sortedPcts.length / 2)] : 0;
+            const totalPortfolioNetInv = tempTraders.reduce((acc, t) => acc + t.netInv, 0);
+
+            tempTraders.forEach(t => {
+                t.relativeAlpha = t.plPct - medianPlPct;
+                t.weightPct = totalPortfolioNetInv > 0 ? (t.netInv / totalPortfolioNetInv) * 100 : 0;
+
+                const rfTrue = t.plPct / Math.max(t.trueMaxDD, 1.0);
+                const scoreReturn = Math.min(35, Math.max(0, (t.plPct + 10) * 0.7));
+                const scoreRf = Math.min(30, Math.max(0, rfTrue * 2.5));
+                const scoreDd = Math.min(20, Math.max(0, 20 - t.trueCurrDD * 0.8));
+                const scoreMat = (t.daysSinceStart >= 90 ? 10 : 4) + (t.recentDailyPl >= 0 ? 5 : 0);
+
+                t.quantScore = Number((scoreReturn + scoreRf + scoreDd + scoreMat).toFixed(1));
+                t.stage = "";
+
+                if (t.daysSinceStart < 30) {
+                    t.stage = "SANDBOX";
+                    t.stageLabel = "Sandbox (Lvl 1)";
+                    t.stageColor = "bg-sky-500/20 text-sky-300 border border-sky-500/40";
+                } else if (t.plPct <= simCutPct || t.trueCurrDD >= 20 || t.quantScore < 32) {
+                    t.stage = "CUT";
+                    t.stageLabel = "Lezárás / Cut";
+                    t.stageColor = "bg-rose-500/20 text-rose-300 border border-rose-500/40";
+                } else if (t.daysSinceStart >= 90) {
+                    if (t.quantScore >= simMinChampScore) {
+                        if (t.trueMaxDD <= 6.5) {
+                            if (t.plPct >= 25) {
+                                t.stage = "REAL_READY";
+                                t.stageLabel = "Real Ready (Lvl 4)";
+                                t.stageColor = "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+                            }
+                        }
+                    }
+                }
+
+                if (!t.stage) {
+                    if (t.daysSinceStart >= 60) {
+                        if (t.quantScore >= 70) {
+                            if (t.trueCurrDD <= 10) {
+                                if (t.plPct >= 15) {
+                                    t.stage = "PRE_REAL";
+                                    t.stageLabel = "Pre-Real (Lvl 3)";
+                                    t.stageColor = "bg-violet-500/20 text-violet-300 border border-violet-500/40";
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!t.stage) {
+                    t.stage = "INCUBATOR";
+                    t.stageLabel = "Incubator (Lvl 2)";
+                    t.stageColor = "bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                }
+            });
+
+            processedTraders = tempTraders;
+            renderAll(medianPlPct);
+        }
+
+        function renderAll(medianPlPct) {
+            const totalEquity = processedTraders.reduce((s, t) => s + t.equity, 0);
+            const totalNetInv = processedTraders.reduce((s, t) => s + t.netInv, 0);
+            const totalPl = totalEquity - totalNetInv;
+            const totalPlPct = totalNetInv > 0 ? (totalPl / totalNetInv) * 100 : 0;
+
+            const avgPlPct = processedTraders.length > 0
+                ? processedTraders.reduce((s, t) => s + t.plPct, 0) / processedTraders.length
+                : 0;
+            const winCount = processedTraders.filter(t => t.pl > 0).length;
+            const winRate = processedTraders.length > 0 ? Math.round((winCount / processedTraders.length) * 100) : 0;
+            const maxWeight = processedTraders.length > 0
+                ? Math.max(...processedTraders.map(t => t.weightPct))
+                : 0;
+
+            // Vedett profit osszegzese azokon a tradereken, ahol a Trailing CSL mar pozitiv profitot zar be
+            const lockableTraders = processedTraders.filter(t => t.lockedProfitHuf > 0);
+            const totalLockedProfitHuf = lockableTraders.reduce((s, t) => s + t.lockedProfitHuf, 0);
+
+            document.getElementById("kpi-equity").innerText = formatMoney(totalEquity, BASE_HUF_PER_USD);
+            const maxLen = processedTraders.length > 0 ? Math.max(...processedTraders.map(t => t.equitySeries.length)) : 0;
+            const portSeries = [];
+            for (let i = 0; i < maxLen; i++) {
+                let daySum = 0;
+                processedTraders.forEach(t => {
+                    const idx = Math.max(0, t.equitySeries.length - maxLen + i);
+                    daySum += (t.equitySeries[idx] || t.netInv);
+                });
+                portSeries.push(daySum);
+            }
+            document.getElementById("kpi-sparkline").innerHTML = buildSparklineSvg(portSeries, totalNetInv, 96, 44);
+            document.getElementById("kpi-invested").innerText = "Befektetett alap: " + formatMoney(totalNetInv, BASE_HUF_PER_USD) + " (" + processedTraders.length + " pozíció)";
+
+            const profitEl = document.getElementById("kpi-profit");
+            const sign = totalPl >= 0 ? "+" : "";
+            profitEl.innerText = sign + formatMoney(totalPl, BASE_HUF_PER_USD) + " (" + sign + totalPlPct.toFixed(2) + "%)";
+            profitEl.className = "text-2xl font-extrabold mt-1 " + (totalPl >= 0 ? "text-emerald-400" : "text-rose-400");
+            document.getElementById("kpi-profit-sub").innerText = "Pozícióátlag: +" + avgPlPct.toFixed(2) + "% | Nyerő arány: " + winRate + "% (" + winCount + "/" + processedTraders.length + ")";
+
+            document.getElementById("kpi-locked-profit").innerText = "+" + formatMoney(totalLockedProfitHuf, BASE_HUF_PER_USD);
+            document.getElementById("kpi-locked-count").innerText = lockableTraders.length + " védett pozíció";
+            const benchSign = medianPlPct >= 0 ? "+" : "";
+            document.getElementById("kpi-benchmark").innerText = "Portfólió medián (Benchmark): " + benchSign + medianPlPct.toFixed(2) + "%";
+
+            const concEl = document.getElementById("kpi-concentration");
+            concEl.innerText = "Max pozíciósúly: " + maxWeight.toFixed(1) + "% (Plafon: " + simMaxCapPct.toFixed(1) + "%)";
+            concEl.className = "text-xs mt-1 " + (maxWeight > simMaxCapPct ? "text-amber-400 font-semibold" : "text-slate-400");
+
+            renderFunnelSection();
+            renderRebalanceQueue(totalNetInv);
+            renderTableSection();
+        }
+
+        function renderFunnelSection() {
+            const stages = [
+                { id: "SANDBOX", title: "Sandbox", sub: "<30 nap", color: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
+                { id: "INCUBATOR", title: "Incubator", sub: "Tesztmezőny", color: "border-amber-500/40 bg-amber-500/10 text-amber-300" },
+                { id: "PRE_REAL", title: "Pre-Real", sub: "Score 70+", color: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
+                { id: "REAL_READY", title: "Real Ready", sub: "Score " + simMinChampScore + "+", color: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
+                { id: "CUT", title: "Cut / Exit", sub: "Lezárandó", color: "border-rose-500/40 bg-rose-500/10 text-rose-300" }
+            ];
+
+            const grid = document.getElementById("funnel-stages-grid");
+            grid.innerHTML = "";
+
+            stages.forEach(st => {
+                const count = processedTraders.filter(t => t.stage === st.id).length;
+                const isSelected = selectedStageFilter === st.id;
+
+                const card = document.createElement("div");
+                card.className = "p-2.5 rounded-lg border cursor-pointer transition " + st.color + (isSelected ? " ring-2 ring-white" : " opacity-90 hover:opacity-100");
+                card.innerHTML = `
+                    <div class="text-[11px] font-bold truncate">${st.title}</div>
+                    <div class="text-lg font-extrabold text-white mt-0.5">${count} db</div>
+                    <div class="text-[10px] opacity-75">${st.sub}</div>
+                `;
+                card.addEventListener("click", () => {
+                    selectedStageFilter = selectedStageFilter === st.id ? "ALL" : st.id;
+                    document.getElementById("reset-stage-filter").className = selectedStageFilter === "ALL" ? "hidden" : "text-xs text-sky-400 hover:text-sky-300 font-bold";
+                    renderFunnelSection();
+                    renderTableSection();
+                });
+                grid.appendChild(card);
+            });
+
+            const candidates = processedTraders
+                .filter(t => t.stage === "REAL_READY" || t.stage === "PRE_REAL")
+                .sort((a, b) => b.quantScore - a.quantScore)
+                .slice(0, 10);
+
+            const listEl = document.getElementById("funnel-candidates-list");
+            listEl.innerHTML = "";
+
+            candidates.forEach(c => {
+                const row = document.createElement("div");
+                row.className = "flex items-center justify-between bg-slate-900/90 hover:bg-slate-800 border border-slate-800 rounded-lg px-3 py-2 text-xs cursor-pointer transition";
+                const progressPct = Math.min(100, Math.round(c.quantScore));
+                row.innerHTML = `
+                    <div class="flex items-center gap-2 w-32">
+                        <span class="w-2 h-2 rounded-full ${c.stage === 'REAL_READY' ? 'bg-emerald-400' : 'bg-violet-400'}"></span>
+                        <span class="font-bold text-white truncate">${c.trader}</span>
+                    </div>
+                    <div class="flex-1 mx-2 bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div class="${c.stage === 'REAL_READY' ? 'bg-emerald-500' : 'bg-violet-500'} h-full" style="width:${progressPct}%"></div>
+                    </div>
+                    <div class="text-right w-16 font-bold text-emerald-400">+${c.plPct.toFixed(1)}%</div>
+                    <div class="text-right w-24">
+                        <span class="stage-pill ${c.stageColor}">${c.stage === 'REAL_READY' ? 'Real Ready' : 'Pre-Real'}</span>
+                    </div>
+                `;
+                row.addEventListener("click", () => openTraderModal(c));
+                listEl.appendChild(row);
+            });
+        }
+
+        function renderRebalanceQueue(totalPortfolioNetInv) {
+            const maxCapHuf = totalPortfolioNetInv * (simMaxCapPct / 100);
+
+            const allSellCandidates = [];
+            processedTraders.forEach(t => {
+                if (t.netInv > maxCapHuf) {
+                    if (t.plPct < 0) {
+                        const trimAmt = Math.round(t.equity * ((t.netInv - maxCapHuf) / t.netInv));
+                        allSellCandidates.push({
+                            trader: t.trader,
+                            account: t.account,
+                            action: "TRIM -> " + simMaxCapPct.toFixed(1) + "%",
+                            plPct: t.plPct,
+                            amountHuf: trimAmt
+                        });
+                        return;
+                    }
+                }
+                if (t.stage === "CUT") {
+                    allSellCandidates.push({
+                        trader: t.trader,
+                        account: t.account,
+                        action: "SELL 100%",
+                        plPct: t.plPct,
+                        amountHuf: Math.round(t.equity)
+                    });
+                }
+            });
+
+            allSellCandidates.sort((a, b) => b.amountHuf - a.amountHuf);
+
+            const activeSellItems = allSellCandidates.filter(item => !excludedSellTraders.has(item.trader));
+            const totalFreedHuf = activeSellItems.reduce((s, x) => s + x.amountHuf, 0);
+
+            document.getElementById("rebalance-summary-badge").innerText =
+                "Felszabadítható tőke: " + formatMoney(totalFreedHuf, BASE_HUF_PER_USD);
+            document.getElementById("sell-selected-count").innerText =
+                activeSellItems.length + " / " + allSellCandidates.length + " kijelölve";
+
+            const sellContainer = document.getElementById("rebalance-sell-list");
+            sellContainer.innerHTML = "";
+
+            allSellCandidates.slice(0, 18).forEach(item => {
+                const isSelected = !excludedSellTraders.has(item.trader);
+                const el = document.createElement("div");
+                el.className = "flex items-center justify-between bg-rose-950/20 border border-rose-500/30 rounded-lg px-2.5 py-1.5 text-xs transition " + (isSelected ? "opacity-100" : "opacity-40");
+                el.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="rb-toggle-sell text-sm leading-none">${isSelected ? '☑️' : '⬜'}</button>
+                        <div>
+                            <div class="font-bold text-white">${item.trader}</div>
+                            <div class="text-[10px] text-rose-300">P/L: ${item.plPct.toFixed(1)}% • ${formatMoney(item.amountHuf, BASE_HUF_PER_USD)}</div>
+                        </div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px]">${item.action}</span>
+                `;
+                el.querySelector(".rb-toggle-sell").addEventListener("click", () => {
+                    if (excludedSellTraders.has(item.trader)) excludedSellTraders.delete(item.trader);
+                    else excludedSellTraders.add(item.trader);
+                    renderRebalanceQueue(totalPortfolioNetInv);
+                });
+                sellContainer.appendChild(el);
+            });
+
+            // Cel bajnokok
+            const allBuyCandidates = processedTraders
+                .filter(t => t.daysSinceStart >= 60)
+                .filter(t => t.quantScore >= simMinChampScore)
+                .filter(t => t.weightPct < simMaxCapPct)
+                .sort((a, b) => b.quantScore - a.quantScore)
+                .slice(0, 12);
+
+            const activeBuyItems = allBuyCandidates.filter(c => !excludedBuyTraders.has(c.trader));
+            const totalChampScore = activeBuyItems.reduce((s, c) => s + c.quantScore, 0);
+
+            document.getElementById("buy-selected-count").innerText =
+                activeBuyItems.length + " / " + allBuyCandidates.length + " bajnok";
+
+            const buyContainer = document.getElementById("rebalance-buy-list");
+            buyContainer.innerHTML = "";
+
+            const buyPlanList = [];
+            allBuyCandidates.forEach(c => {
+                const isSelected = !excludedBuyTraders.has(c.trader);
+                let share = 0;
+                if (isSelected) {
+                    if (totalChampScore > 0) {
+                        share = c.quantScore / totalChampScore;
+                    }
+                }
+                const allocHuf = Math.round(totalFreedHuf * share);
+                if (isSelected) {
+                    buyPlanList.push({
+                        trader: c.trader,
+                        account: c.account,
+                        allocHuf: allocHuf,
+                        plPct: c.plPct,
+                        quantScore: c.quantScore
+                    });
+                }
+
+                const el = document.createElement("div");
+                el.className = "flex items-center justify-between bg-emerald-950/20 border border-emerald-500/30 rounded-lg px-2.5 py-1.5 text-xs transition " + (isSelected ? "opacity-100" : "opacity-40");
+                el.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="rb-toggle-buy text-sm leading-none">${isSelected ? '☑️' : '⬜'}</button>
+                        <div>
+                            <div class="font-bold text-white">${c.trader}</div>
+                            <div class="text-[10px] text-emerald-300">+${c.plPct.toFixed(1)}% (Score: ${c.quantScore})</div>
+                        </div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px]">+${formatMoney(allocHuf, BASE_HUF_PER_USD)}</span>
+                `;
+                el.querySelector(".rb-toggle-buy").addEventListener("click", () => {
+                    if (excludedBuyTraders.has(c.trader)) excludedBuyTraders.delete(c.trader);
+                    else excludedBuyTraders.add(c.trader);
+                    renderRebalanceQueue(totalPortfolioNetInv);
+                });
+                buyContainer.appendChild(el);
+            });
+
+            // Szimulalt hozamhatas kiszamitasa
+            const avgSellPlPct = activeSellItems.length > 0
+                ? activeSellItems.reduce((s, x) => s + x.plPct, 0) / activeSellItems.length
+                : 0;
+            const avgBuyPlPct = activeBuyItems.length > 0
+                ? activeBuyItems.reduce((s, x) => s + x.plPct, 0) / activeBuyItems.length
+                : 0;
+            const spreadPct = Math.max(0, avgBuyPlPct - avgSellPlPct);
+            const expectedGainHuf = Math.round(totalFreedHuf * (spreadPct / 100));
+            const portfolioBoostPct = totalPortfolioNetInv > 0 ? (expectedGainHuf / totalPortfolioNetInv) * 100 : 0;
+
+            document.getElementById("kpi-sim-boost").innerText = "+" + portfolioBoostPct.toFixed(2) + "%";
+            document.getElementById("rebalance-footer-text").innerText =
+                "Szimulált hatás: +" + formatMoney(expectedGainHuf, BASE_HUF_PER_USD) + " várható évesített többlethozam (+" + portfolioBoostPct.toFixed(2) + "% portfólió Alpha)";
+
+            currentRebalancePlan = {
+                sellList: activeSellItems,
+                buyList: buyPlanList,
+                totalFreedHuf: totalFreedHuf,
+                expectedAnnualBoostHuf: expectedGainHuf
+            };
+        }
+
+        function renderTableSection() {
+            let list = processedTraders.slice();
+
+            if (selectedStageFilter !== "ALL") {
+                list = list.filter(t => t.stage === selectedStageFilter);
+            }
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                list = list.filter(t => t.trader.toLowerCase().includes(q));
+            }
+
+            list.sort((a, b) => {
+                if (sortMode === "quantScore_desc") return b.quantScore - a.quantScore;
+                if (sortMode === "lockedPct_desc") return b.lockedProfitPct - a.lockedProfitPct;
+                if (sortMode === "alpha_desc") return b.relativeAlpha - a.relativeAlpha;
+                if (sortMode === "plPct_desc") return b.plPct - a.plPct;
+                if (sortMode === "trueCurrDD_desc") return b.trueCurrDD - a.trueCurrDD;
+                if (sortMode === "equity_desc") return b.equity - a.equity;
+                return a.trader.localeCompare(b.trader);
+            });
+
+            document.getElementById("table-subtitle").innerText =
+                "Megjelenítve: " + list.length + " / " + processedTraders.length + " aktív másolt pozíció (kattints bármelyik sorra a CSL kalkulátorhoz)";
+
+            const tbody = document.getElementById("quant-tbody");
+            tbody.innerHTML = "";
+
+            list.forEach(t => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-800/60 transition cursor-pointer";
+
+                const plColor = t.plPct >= 0 ? "text-emerald-400" : "text-rose-400";
+                const alphaColor = t.relativeAlpha >= 0 ? "text-emerald-400" : "text-rose-400";
+                const ddWidth = Math.min(100, Math.round((t.trueCurrDD / 35) * 100));
+                const ddBarColor = t.trueCurrDD >= 20 ? "bg-rose-500" : (t.trueCurrDD >= 10 ? "bg-amber-500" : "bg-emerald-500");
+
+                const riskBg = t.riskScore <= 4
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    : (t.riskScore <= 6 ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "bg-rose-500/20 text-rose-300 border-rose-500/40");
+
+                const sparkSvg = buildSparklineSvg(t.equitySeries, t.netInv, 90, 26);
+
+                let cslBadgeHtml = "";
+                if (t.lockedProfitPct >= 15) {
+                    cslBadgeHtml = `<div class="font-bold text-emerald-400">🛡️ +${t.lockedProfitPct.toFixed(1)}% védett</div>
+                                    <div class="text-[10px] text-slate-400">CSL: ${formatMoney(t.cslTriggerEquity, BASE_HUF_PER_USD)} (-${t.recBufferPct}%)</div>`;
+                } else if (t.lockedProfitPct > 0) {
+                    cslBadgeHtml = `<div class="font-bold text-sky-300">🛡️ +${t.lockedProfitPct.toFixed(1)}% nullszaldó felett</div>
+                                    <div class="text-[10px] text-slate-400">CSL: ${formatMoney(t.cslTriggerEquity, BASE_HUF_PER_USD)} (-${t.recBufferPct}%)</div>`;
+                } else {
+                    cslBadgeHtml = `<div class="font-semibold text-slate-400">Tőkevédelem: ${t.lockedProfitPct.toFixed(1)}%</div>
+                                    <div class="text-[10px] text-slate-500">CSL: ${formatMoney(t.cslTriggerEquity, BASE_HUF_PER_USD)}</div>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-3 px-2.5">
+                        <div class="font-bold text-white hover:text-sky-300">${t.trader}</div>
+                        <div class="text-[10px] text-slate-400">${t.daysSinceStart} nap • Kezdés: ${t.earliestDate}</div>
+                    </td>
+                    <td class="py-3 px-2.5">
+                        <span class="stage-pill ${t.stageColor}">${t.stageLabel}</span>
+                    </td>
+                    <td class="py-3 px-2.5 text-right text-slate-300 font-medium">
+                        ${formatMoney(t.netInv, BASE_HUF_PER_USD)}
+                    </td>
+                    <td class="py-3 px-2.5 text-right font-bold text-white">
+                        ${formatMoney(t.equity, BASE_HUF_PER_USD)}
+                    </td>
+                    <td class="py-3 px-2.5 text-right ${t.weightPct > simMaxCapPct ? 'text-amber-400 font-bold' : 'text-slate-400'}">
+                        ${t.weightPct.toFixed(1)}%
+                    </td>
+                    <td class="py-3 px-2.5 flex justify-center">
+                        ${sparkSvg}
+                    </td>
+                    <td class="py-3 px-2.5 text-right font-bold ${plColor}">
+                        ${t.plPct >= 0 ? '+' : ''}${t.plPct.toFixed(2)}%
+                    </td>
+                    <td class="py-3 px-2.5 text-right font-bold ${alphaColor}">
+                        ${t.relativeAlpha >= 0 ? '+' : ''}${t.relativeAlpha.toFixed(2)}%
+                    </td>
+                    <td class="py-3 px-2.5">
+                        <div class="flex items-center justify-between text-[11px] mb-1">
+                            <span class="${t.trueCurrDD >= 15 ? 'text-rose-400 font-bold' : 'text-slate-300'}">${t.trueCurrDD.toFixed(1)}%</span>
+                            <span class="text-slate-500">Max: ${t.trueMaxDD.toFixed(1)}%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="${ddBarColor} h-full" style="width:${ddWidth}%"></div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-2.5">
+                        ${cslBadgeHtml}
+                    </td>
+                    <td class="py-3 px-2.5 text-center">
+                        <span class="px-2.5 py-1 rounded-md font-extrabold ${t.quantScore >= 80 ? 'bg-emerald-500/20 text-emerald-300' : (t.quantScore >= 50 ? 'bg-sky-500/20 text-sky-300' : 'bg-rose-500/20 text-rose-300')}">
+                            ${t.quantScore.toFixed(1)}
+                        </span>
+                    </td>
+                    <td class="py-3 px-2.5 text-center">
+                        <span class="px-2 py-0.5 rounded border font-bold ${riskBg}">${t.riskScore}</span>
+                    </td>
+                `;
+                tr.addEventListener("click", () => openTraderModal(t));
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Modal megnyitasa es Trailing CSL szimulacio
+        function openTraderModal(traderObj) {
+            activeModalTrader = traderObj;
+            const overlay = document.getElementById("trader-modal-overlay");
+            overlay.classList.remove("hidden");
+            overlay.classList.add("flex");
+
+            document.getElementById("modal-trader-name").innerText = traderObj.trader;
+            const pill = document.getElementById("modal-stage-pill");
+            pill.className = "stage-pill " + traderObj.stageColor;
+            pill.innerText = traderObj.stageLabel;
+
+            document.getElementById("modal-score-badge").innerText = "Quant Score: " + traderObj.quantScore.toFixed(1);
+            document.getElementById("modal-trader-sub").innerText =
+                "Számla: " + traderObj.account + " | Kezdődátum: " + traderObj.earliestDate + " (" + traderObj.daysSinceStart + " nap) | Snapshotok: " + traderObj.snapshotCount + " db";
+
+            document.getElementById("modal-netinv").innerText = formatMoney(traderObj.netInv, BASE_HUF_PER_USD);
+            document.getElementById("modal-equity").innerText = formatMoney(traderObj.equity, BASE_HUF_PER_USD);
+
+            const plSign = traderObj.plPct >= 0 ? "+" : "";
+            const alSign = traderObj.relativeAlpha >= 0 ? "+" : "";
+            const plEl = document.getElementById("modal-plpct");
+            plEl.innerText = plSign + traderObj.plPct.toFixed(2) + "% (α: " + alSign + traderObj.relativeAlpha.toFixed(1) + "%)";
+            plEl.className = "text-base font-bold mt-0.5 " + (traderObj.plPct >= 0 ? "text-emerald-400" : "text-rose-400");
+
+            document.getElementById("modal-dd").innerText = traderObj.trueCurrDD.toFixed(1) + "% / " + traderObj.trueMaxDD.toFixed(1) + "%";
+
+            const slider = document.getElementById("modal-buffer-slider");
+            slider.value = traderObj.recBufferPct;
+            updateModalCslCalculation(traderObj.recBufferPct);
+        }
+
+        function updateModalCslCalculation(bufferPct) {
+            if (!activeModalTrader) return;
+            const t = activeModalTrader;
+            const buf = parseFloat(bufferPct) || 10;
+
+            document.getElementById("modal-buffer-label").innerText = "-" + buf.toFixed(1) + "% az aktuális Equity csúcstól";
+
+            const cslEquity = Math.round(t.equity * (1 - buf / 100));
+            const lockedHuf = cslEquity - t.netInv;
+            const lockedPct = (lockedHuf / t.netInv) * 100;
+            const skimAmount = t.pl > 10000 ? Math.round(t.pl * 0.25) : 0;
+
+            document.getElementById("modal-csl-value").innerText = formatMoney(cslEquity, BASE_HUF_PER_USD);
+            document.getElementById("modal-chart-label").innerText = "CSL küszöb: " + formatMoney(cslEquity, BASE_HUF_PER_USD);
+
+            const lockEl = document.getElementById("modal-locked-profit");
+            const lSign = lockedHuf >= 0 ? "+" : "";
+            lockEl.innerText = lSign + formatMoney(lockedHuf, BASE_HUF_PER_USD) + " (" + lSign + lockedPct.toFixed(1) + "%)";
+            lockEl.className = "text-sm font-extrabold mt-0.5 " + (lockedHuf >= 0 ? "text-emerald-400" : "text-rose-400");
+
+            document.getElementById("modal-skim-value").innerText = skimAmount > 0
+                ? formatMoney(skimAmount, BASE_HUF_PER_USD) + " (profit 25%-a)"
+                : "Még nem indokolt";
+
+            const recEl = document.getElementById("modal-csl-recommendation");
+            if (lockedPct >= 25) {
+                recEl.innerText = "🔥 Erős profitvédelem: húzd fel a CSL-t +" + lockedPct.toFixed(1) + "% garantált hozamra!";
+                recEl.className = "text-xs font-bold text-emerald-400";
+            } else if (lockedPct > 0) {
+                recEl.innerText = "✅ Nullszaldó feletti védelem: a tőkéd 100%-ban védett";
+                recEl.className = "text-xs font-bold text-sky-400";
+            } else {
+                recEl.innerText = "⚠️ Kockázati zóna: a CSL még az alapbefektetés alatt van";
+                recEl.className = "text-xs font-bold text-amber-400";
+            }
+
+            document.getElementById("modal-chart-container").innerHTML =
+                buildModalChartSvg(t.equitySeries, t.netInv, cslEquity, 560, 135);
+        }
+
+        // Esemenykezelok
+        document.getElementById("modal-buffer-slider").addEventListener("input", (e) => {
+            updateModalCslCalculation(e.target.value);
+        });
+
+        document.getElementById("modal-close-btn").addEventListener("click", () => {
+            const overlay = document.getElementById("trader-modal-overlay");
+            overlay.classList.add("hidden");
+            overlay.classList.remove("flex");
+        });
+
+        document.getElementById("modal-btn-csl").addEventListener("click", () => {
+            if (!activeModalTrader) return;
+            const buf = parseFloat(document.getElementById("modal-buffer-slider").value) || 10;
+            const cslEquity = Math.round(activeModalTrader.equity * (1 - buf / 100));
+            const lockedPct = ((cslEquity - activeModalTrader.netInv) / activeModalTrader.netInv) * 100;
+            addJournalEntry(
+                activeModalTrader.trader,
+                activeModalTrader.account,
+                "CSL FELHÚZÁS",
+                formatMoney(cslEquity, BASE_HUF_PER_USD),
+                "Csúszó CSL (-" + buf.toFixed(1) + "% puffer), garantált hozam: " + (lockedPct >= 0 ? "+" : "") + lockedPct.toFixed(1) + "%"
+            );
+            document.getElementById("journal-panel").classList.remove("hidden");
+            document.getElementById("modal-close-btn").click();
+        });
+
+        document.getElementById("modal-btn-skim").addEventListener("click", () => {
+            if (!activeModalTrader) return;
+            const skimAmt = Math.max(5000, Math.round(activeModalTrader.pl * 0.25));
+            addJournalEntry(
+                activeModalTrader.trader,
+                activeModalTrader.account,
+                "PROFIT KIVÉT (SKIM 25%)",
+                "-" + formatMoney(skimAmt, BASE_HUF_PER_USD),
+                "Részleges profitrealizálás +" + activeModalTrader.plPct.toFixed(1) + "% hozamnál"
+            );
+            document.getElementById("journal-panel").classList.remove("hidden");
+            document.getElementById("modal-close-btn").click();
+        });
+
+        document.getElementById("modal-btn-promote").addEventListener("click", () => {
+            if (!activeModalTrader) return;
+            addJournalEntry(
+                activeModalTrader.trader,
+                "Virtual -> Real",
+                "ELŐLÉPTETÉS (PROMOTE)",
+                formatMoney(activeModalTrader.netInv, BASE_HUF_PER_USD),
+                "Quant Score: " + activeModalTrader.quantScore + ", P/L: +" + activeModalTrader.plPct.toFixed(1) + "%"
+            );
+            document.getElementById("journal-panel").classList.remove("hidden");
+            document.getElementById("modal-close-btn").click();
+        });
+
+        document.getElementById("modal-btn-close").addEventListener("click", () => {
+            if (!activeModalTrader) return;
+            addJournalEntry(
+                activeModalTrader.trader,
+                activeModalTrader.account,
+                "POZÍCIÓ LEZÁRÁS (SELL)",
+                formatMoney(activeModalTrader.equity, BASE_HUF_PER_USD),
+                "Lezárás P/L: " + activeModalTrader.plPct.toFixed(1) + "%, DD: " + activeModalTrader.trueCurrDD.toFixed(1) + "%"
+            );
+            document.getElementById("journal-panel").classList.remove("hidden");
+            document.getElementById("modal-close-btn").click();
+        });
+
+        // Szimulator csuszkak esemenyei
+        document.getElementById("slider-cap-pct").addEventListener("input", (e) => {
+            simMaxCapPct = parseFloat(e.target.value) || 8.0;
+            document.getElementById("lbl-cap-pct").innerText = simMaxCapPct.toFixed(1) + "%";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("slider-cut-pct").addEventListener("input", (e) => {
+            simCutPct = parseFloat(e.target.value) || -10.0;
+            document.getElementById("lbl-cut-pct").innerText = simCutPct.toFixed(1) + "%";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("slider-champ-score").addEventListener("input", (e) => {
+            simMinChampScore = parseInt(e.target.value, 10) || 82;
+            document.getElementById("lbl-champ-score").innerText = simMinChampScore + " pont";
+            recalculateQuantModel();
+        });
+
+        // Teljes rebalance terv mentese a naploba
+        document.getElementById("log-rebalance-btn").addEventListener("click", () => {
+            const entries = getJournalEntries();
+            const today = getTodayStr();
+
+            currentRebalancePlan.sellList.slice(0, 10).forEach(s => {
+                entries.unshift({
+                    id: "j_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
+                    date: today,
+                    trader: s.trader,
+                    account: s.account,
+                    action: s.action,
+                    amountInfo: "-" + formatMoney(s.amountHuf, BASE_HUF_PER_USD),
+                    reason: "Rebalance forrás (P/L: " + s.plPct.toFixed(1) + "%)",
+                    status: "TERVEZETT"
+                });
+            });
+
+            currentRebalancePlan.buyList.forEach(b => {
+                entries.unshift({
+                    id: "j_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
+                    date: today,
+                    trader: b.trader,
+                    account: b.account,
+                    action: "SCALE-IN (TŐKEEMELÉS)",
+                    amountInfo: "+" + formatMoney(b.allocHuf, BASE_HUF_PER_USD),
+                    reason: "Top Quant bajnok (Score: " + b.quantScore + ", P/L: +" + b.plPct.toFixed(1) + "%)",
+                    status: "TERVEZETT"
+                });
+            });
+
+            saveJournalEntries(entries);
+            document.getElementById("journal-panel").classList.remove("hidden");
+        });
+
+        document.getElementById("toggle-journal-btn").addEventListener("click", () => {
+            const panel = document.getElementById("journal-panel");
+            panel.classList.toggle("hidden");
+        });
+
+        document.getElementById("clear-journal-btn").addEventListener("click", () => {
+            saveJournalEntries([]);
+        });
+
+        document.getElementById("export-journal-btn").addEventListener("click", () => {
+            const entries = getJournalEntries();
+            if (!entries.length) return;
+            const ws = XLSX.utils.json_to_sheet(entries);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dontesi_Naplo");
+            XLSX.writeFile(wb, "etoro_quant_dontesi_naplo.xlsx");
+        });
+
+        document.getElementById("acc-virtual").addEventListener("click", () => {
+            selectedAccount = "Virtual";
+            document.getElementById("acc-virtual").className = "px-3 py-1 rounded-md font-bold bg-blue-600 text-white transition";
+            document.getElementById("acc-real").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            document.getElementById("acc-all").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("acc-real").addEventListener("click", () => {
+            selectedAccount = "Real";
+            document.getElementById("acc-real").className = "px-3 py-1 rounded-md font-bold bg-blue-600 text-white transition";
+            document.getElementById("acc-virtual").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            document.getElementById("acc-all").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("acc-all").addEventListener("click", () => {
+            selectedAccount = "ALL";
+            document.getElementById("acc-all").className = "px-3 py-1 rounded-md font-bold bg-blue-600 text-white transition";
+            document.getElementById("acc-virtual").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            document.getElementById("acc-real").className = "px-3 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("currency-toggle").addEventListener("click", () => {
+            currencyMode = currencyMode === "HUF" ? "USD" : "HUF";
+            document.getElementById("curr-label").innerText = currencyMode === "USD" ? "USD alap (Devizasemleges)" : "HUF nézet (Forint)";
+            recalculateQuantModel();
+        });
+
+        document.getElementById("refresh-btn").addEventListener("click", loadFirebaseData);
+
+        document.getElementById("export-xlsx-btn").addEventListener("click", () => {
+            if (!processedTraders.length) return;
+            const rows = processedTraders.slice().sort((a, b) => b.quantScore - a.quantScore).map(t => ({
+                Trader: t.trader,
+                Account: t.account,
+                Stage: t.stageLabel,
+                StartDate: t.earliestDate,
+                LatestDate: t.latestDate,
+                Days: t.daysSinceStart,
+                Snapshots: t.snapshotCount,
+                NetInv_HUF: Math.round(t.netInv),
+                Equity_HUF: Math.round(t.equity),
+                PL_HUF: Math.round(t.pl),
+                Weight_Pct: Number(t.weightPct.toFixed(2)),
+                PL_Pct: Number(t.plPct.toFixed(2)),
+                Relative_Alpha_Pct: Number(t.relativeAlpha.toFixed(2)),
+                True_CurrDD_Pct: Number(t.trueCurrDD.toFixed(2)),
+                True_MaxDD_Pct: Number(t.trueMaxDD.toFixed(2)),
+                Recommended_CSL_HUF: t.cslTriggerEquity,
+                Locked_Profit_HUF: t.lockedProfitHuf,
+                Locked_Profit_Pct: Number(t.lockedProfitPct.toFixed(2)),
+                Quant_Score: t.quantScore,
+                Risk_Score: t.riskScore
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Quant_Terminal_v2");
+            const dStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, "etoro_quant_terminal_v2_" + dStr + ".xlsx");
+        });
+
+        document.getElementById("reset-stage-filter").addEventListener("click", () => {
+            selectedStageFilter = "ALL";
+            document.getElementById("reset-stage-filter").className = "hidden";
+            renderFunnelSection();
+            renderTableSection();
+        });
+
+        document.getElementById("search-input").addEventListener("input", (e) => {
+            searchQuery = e.target.value.trim();
+            renderTableSection();
+        });
+
+        document.getElementById("sort-select").addEventListener("change", (e) => {
+            sortMode = e.target.value;
+            renderTableSection();
+        });
+
+        document.getElementById("export-plan-btn").addEventListener("click", () => {
+            const sellText = currentRebalancePlan.sellList.map(s => s.trader + " (" + s.action + "): -" + formatMoney(s.amountHuf, BASE_HUF_PER_USD)).join("\n");
+            const buyText = currentRebalancePlan.buyList.map(b => b.trader + " (Score " + b.quantScore + "): +" + formatMoney(b.allocHuf, BASE_HUF_PER_USD)).join("\n");
+            const report = "=== QUANT TERMINAL V2.0 REBALANCING PLAN ===\nFelszabaduló tőke: " + formatMoney(currentRebalancePlan.totalFreedHuf, BASE_HUF_PER_USD) + "\n\nFORRÁS (LEZÁRÁS / TRIM):\n" + sellText + "\n\nCÉL (TOP BAJNOKOK):\n" + buyText;
+            navigator.clipboard.writeText(report);
+            const btn = document.getElementById("export-plan-btn");
+            btn.innerText = "Vágólapra másolva!";
+            setTimeout(() => { btn.innerText = "Terv másolása vágólapra"; }, 2000);
+        });
+
+        renderJournalTable();
+        loadFirebaseData();
+    })();
+    </script>
+</body>
+</html>
